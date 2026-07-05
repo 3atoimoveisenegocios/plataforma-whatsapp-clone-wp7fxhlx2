@@ -18,7 +18,7 @@ export interface Property {
 
 let cachedProperties: Property[] | null = null
 let cacheTimestamp = 0
-const CACHE_TTL = 60 * 1000
+const CACHE_TTL = 2 * 60 * 1000
 
 export const getProperties = async (): Promise<Property[]> => {
   const now = Date.now()

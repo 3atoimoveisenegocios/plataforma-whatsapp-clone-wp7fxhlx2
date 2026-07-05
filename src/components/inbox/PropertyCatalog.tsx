@@ -1,4 +1,4 @@
-import { useEffect, useState, type SyntheticEvent } from 'react'
+import { useEffect, useState, useMemo, type SyntheticEvent } from 'react'
 import { toast } from 'sonner'
 import { getProperties, refreshProperties, type Property } from '@/services/properties'
 import { formatPropertyMessage } from '@/lib/property-message'
@@ -17,6 +17,7 @@ import {
 } from '@/components/ui/carousel'
 
 const PLACEHOLDER_IMAGE = 'https://img.usecurling.com/p/400/300?q=real%20estate%20house'
+const PAGE_SIZE = 24
 
 interface PropertyCatalogProps {
   onSendProperty: (property: Property, message: string) => void
@@ -60,6 +61,7 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [sendingId, setSendingId] = useState<string | null>(null)
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
 
   useEffect(() => {
     let cancelled = false
@@ -84,6 +86,7 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
     try {
       const data = await refreshProperties()
       setProperties(data)
+      setVisibleCount(PAGE_SIZE)
       toast.success('Lista de imóveis atualizada com sucesso!')
     } catch (err) {
       console.error('Failed to refresh properties', err)
@@ -99,9 +102,19 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
     setTimeout(() => setSendingId(null), 2000)
   }
 
-  const filteredProperties = properties.filter((p) =>
-    p.name.toLowerCase().includes(search.toLowerCase()),
+  const filteredProperties = useMemo(
+    () => properties.filter((p) => p.name.toLowerCase().includes(search.toLowerCase())),
+    [properties, search],
   )
+
+  const visibleProperties = useMemo(
+    () => filteredProperties.slice(0, visibleCount),
+    [filteredProperties, visibleCount],
+  )
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE)
+  }, [search])
 
   if (loading) {
     return (
@@ -149,6 +162,7 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
       </div>
     )
   }
+
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
       <div className="px-5 py-3 border-b border-zinc-200/70 bg-white shrink-0">
@@ -161,16 +175,21 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
             className="pl-9 h-9 bg-zinc-50/80 border-zinc-200/70 text-[13.5px] placeholder:text-zinc-400 focus-visible:ring-violet-500/30 focus-visible:ring-offset-0 focus-visible:border-violet-300"
           />
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full h-9 mt-2 text-[13px] font-medium border-zinc-200/70 hover:bg-zinc-50 hover:border-violet-300 text-zinc-700"
-          onClick={handleRefresh}
-          disabled={refreshing}
-        >
-          <RotateCw className={cn('h-3.5 w-3.5 mr-1.5', refreshing && 'animate-spin')} />
-          {refreshing ? 'Atualizando...' : 'Atualizar Imóveis'}
-        </Button>
+        <div className="flex items-center gap-2 mt-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-1 h-9 text-[13px] font-medium border-zinc-200/70 hover:bg-zinc-50 hover:border-violet-300 text-zinc-700"
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            <RotateCw className={cn('h-3.5 w-3.5 mr-1.5', refreshing && 'animate-spin')} />
+            {refreshing ? 'Atualizando...' : 'Atualizar Imóveis'}
+          </Button>
+          <span className="text-[11px] text-zinc-400 font-medium whitespace-nowrap shrink-0">
+            {filteredProperties.length} imóveis
+          </span>
+        </div>
       </div>
 
       <ScrollArea className="flex-1">
@@ -186,7 +205,7 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
           </div>
         ) : (
           <div className="p-3 space-y-3">
-            {filteredProperties.map((property) => {
+            {visibleProperties.map((property) => {
               const effectiveImages = getEffectiveImages(property)
               const hasImages = effectiveImages.length > 0
               return (
@@ -307,6 +326,21 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
                 </div>
               )
             })}
+            {visibleCount < filteredProperties.length && (
+              <div className="pt-2 pb-4 flex justify-center">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 text-[13px] font-medium border-zinc-200/70 hover:bg-zinc-50 hover:border-violet-300 text-zinc-700"
+                  onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}
+                >
+                  Carregar mais imóveis
+                  <span className="text-[11px] text-zinc-400 ml-1.5">
+                    ({visibleCount} de {filteredProperties.length})
+                  </span>
+                </Button>
+              </div>
+            )}
           </div>
         )}
       </ScrollArea>
