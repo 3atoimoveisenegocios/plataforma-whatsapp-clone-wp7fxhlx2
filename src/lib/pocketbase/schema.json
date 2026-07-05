@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-05T17:36:25.095Z",
+  "generatedAt": "2026-07-05T17:46:21.698Z",
   "collections": [
     {
       "name": "users",
@@ -365,6 +365,89 @@
         }
       ],
       "indexes": []
+    },
+    {
+      "name": "properties",
+      "type": "base",
+      "apiRules": {
+        "list": "@request.auth.id != '' && user_id = @request.auth.id",
+        "view": "@request.auth.id != '' && user_id = @request.auth.id",
+        "create": "@request.auth.id != ''",
+        "update": "@request.auth.id != '' && user_id = @request.auth.id",
+        "delete": "@request.auth.id != '' && user_id = @request.auth.id"
+      },
+      "fields": [
+        {
+          "name": "user_id",
+          "type": "relation",
+          "required": true,
+          "system": false,
+          "collectionRef": "users"
+        },
+        {
+          "name": "name",
+          "type": "text",
+          "required": true,
+          "system": false
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bedrooms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "bathrooms",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "suites",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "garage_spots",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "images",
+          "type": "file",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "external_link",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "created",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate"]
+        },
+        {
+          "name": "updated",
+          "type": "autodate",
+          "required": false,
+          "system": false,
+          "autodateTriggers": ["onCreate", "onUpdate"]
+        }
+      ],
+      "indexes": ["CREATE INDEX idx_properties_name ON properties (name)"]
     }
   ]
 }

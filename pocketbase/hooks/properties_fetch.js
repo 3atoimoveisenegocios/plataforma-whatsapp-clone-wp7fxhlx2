@@ -39,23 +39,20 @@ routerAdd(
       var item = items[i]
 
       var photoUrls = []
-      if (item.photos) {
-        if (Array.isArray(item.photos)) {
-          for (var j = 0; j < item.photos.length; j++) {
+      var rawPhotos = item.photos || item.images || item.pictures || []
+      if (typeof rawPhotos === 'string') rawPhotos = [rawPhotos]
+
+      if (Array.isArray(rawPhotos)) {
+        for (var j = 0; j < rawPhotos.length; j++) {
+          var p = rawPhotos[j]
+          if (typeof p !== 'string') continue
+          if (p.startsWith('http')) {
+            photoUrls.push(p)
+          } else {
             photoUrls.push(
-              externalBaseUrl +
-                '/api/files/' +
-                item.collectionId +
-                '/' +
-                item.id +
-                '/' +
-                item.photos[j],
+              externalBaseUrl + '/api/files/' + item.collectionId + '/' + item.id + '/' + p,
             )
           }
-        } else if (typeof item.photos === 'string') {
-          photoUrls.push(
-            externalBaseUrl + '/api/files/' + item.collectionId + '/' + item.id + '/' + item.photos,
-          )
         }
       }
 

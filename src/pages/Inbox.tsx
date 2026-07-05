@@ -459,12 +459,9 @@ export default function Inbox() {
 
     const lines: string[] = [
       `*${property.title}*`,
-      `Quartos: ${property.bedrooms ?? 0}`,
-      `Banheiros: ${property.bathrooms ?? 0}`,
-      `Suítes: ${property.suites ?? 0}`,
-      `Vagas de garagem: ${property.parking_spots ?? 0}`,
+      `Quartos: ${property.bedrooms ?? 0} | Banheiros: ${property.bathrooms ?? 0} | Suítes: ${property.suites ?? 0} | Vagas: ${property.parking_spots ?? 0}`,
+      '',
       property.description || 'Não informado',
-      `Link do imóvel: ${property.link || 'Não informado'}`,
     ]
     const messageText = lines.join('\n')
 
