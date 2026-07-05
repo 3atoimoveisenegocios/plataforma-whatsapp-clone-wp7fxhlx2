@@ -457,22 +457,15 @@ export default function Inbox() {
       return
     }
 
-    const lines: string[] = [`🏠 *${property.title}*`]
-    if (property.sale_price)
-      lines.push(`💰 Venda: R$ ${Number(property.sale_price).toLocaleString('pt-BR')}`)
-    if (property.rent_price)
-      lines.push(`📍 Locação: R$ ${Number(property.rent_price).toLocaleString('pt-BR')}`)
-    lines.push('')
-    const features: string[] = []
-    if (property.bedrooms) features.push(`🛏 ${property.bedrooms} Dormitórios`)
-    if (property.bathrooms) features.push(`🚿 ${property.bathrooms} Banheiros`)
-    if (property.suites) features.push(`🛁 ${property.suites} Suítes`)
-    if (property.parking_spots) features.push(`🚗 ${property.parking_spots} Vagas`)
-    if (features.length) lines.push(features.join(' | '))
-    if (property.description) {
-      lines.push('')
-      lines.push(property.description)
-    }
+    const lines: string[] = [
+      `*${property.title}*`,
+      `Quartos: ${property.bedrooms ?? 0}`,
+      `Banheiros: ${property.bathrooms ?? 0}`,
+      `Suítes: ${property.suites ?? 0}`,
+      `Vagas de garagem: ${property.parking_spots ?? 0}`,
+      property.description || 'Não informado',
+      `Link do imóvel: ${property.link || 'Não informado'}`,
+    ]
     const messageText = lines.join('\n')
 
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`

@@ -11,6 +11,7 @@ export interface Property {
   suites: number
   parking_spots: number
   photos: string[]
+  link: string
 }
 
 let cachedProperties: Property[] | null = null

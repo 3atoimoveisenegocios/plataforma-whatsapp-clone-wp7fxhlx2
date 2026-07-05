@@ -70,6 +70,7 @@ routerAdd(
         suites: item.suites || 0,
         parking_spots: item.parking_spots || 0,
         photos: photoUrls,
+        link: item.link || item.url || '',
       })
     }
 

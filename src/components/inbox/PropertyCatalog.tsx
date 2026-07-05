@@ -104,6 +104,17 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
                       alt={property.title}
                       className="w-full h-full object-cover"
                       loading="lazy"
+                      onError={(e) => {
+                        const target = e.currentTarget
+                        target.style.display = 'none'
+                        const parent = target.parentElement
+                        if (parent) {
+                          parent.className =
+                            'h-40 bg-gradient-to-br from-zinc-100 to-zinc-200 flex items-center justify-center'
+                          parent.innerHTML =
+                            '<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-300"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>'
+                        }
+                      }}
                     />
                   </div>
                 ) : (
@@ -140,7 +151,9 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
                   </div>
 
                   {property.description && (
-                    <p className="text-xs text-zinc-600 line-clamp-2">{property.description}</p>
+                    <p className="text-xs text-zinc-600 line-clamp-3 leading-relaxed">
+                      {property.description}
+                    </p>
                   )}
 
                   <div className="flex flex-wrap items-center gap-3 py-1">
