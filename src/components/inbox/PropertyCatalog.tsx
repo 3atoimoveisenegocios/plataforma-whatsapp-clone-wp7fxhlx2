@@ -93,34 +93,6 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
     }
   }
 
-  const handleRefresh = async () => {
-    setRefreshing(true)
-    try {
-      const data = await refreshProperties()
-      setProperties(data)
-      toast.success('Lista de imóveis atualizada com sucesso!')
-    } catch (err) {
-      console.error('Failed to refresh properties', err)
-      toast.error('Erro ao atualizar a lista de imóveis. Tente novamente.')
-    } finally {
-      setRefreshing(false)
-    }
-  }
-
-  const handleRefresh = async () => {
-    setRefreshing(true)
-    try {
-      const data = await refreshProperties()
-      setProperties(data)
-      toast.success('Lista de imóveis atualizada com sucesso!')
-    } catch (err) {
-      console.error('Failed to refresh properties', err)
-      toast.error('Erro ao atualizar a lista de imóveis. Tente novamente.')
-    } finally {
-      setRefreshing(false)
-    }
-  }
-
   const handleSend = (property: Property) => {
     setSendingId(property.id)
     onSendProperty(property, formatPropertyMessage(property))
@@ -176,7 +148,6 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
       </div>
     )
   }
-
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
       <div className="px-5 py-3 border-b border-zinc-200/70 bg-white shrink-0">
@@ -201,7 +172,8 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
         </Button>
       </div>
 
-    <ScrollArea className="flex-1">        {filteredProperties.length === 0 ? (
+    <ScrollArea className="flex-1">
+        {filteredProperties.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 text-center mt-10">
             <div className="h-12 w-12 rounded-full bg-zinc-100 flex items-center justify-center mb-3">
               <MapPin className="h-5 w-5 text-zinc-400" />
