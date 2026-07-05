@@ -13,6 +13,8 @@ export interface Property {
   external_link: string
   sale_price?: number | null
   rent_price?: number | null
+  built_area?: number | null
+  land_area?: number | null
   source: 'local' | 'external'
 }
 

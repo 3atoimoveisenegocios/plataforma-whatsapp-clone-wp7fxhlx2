@@ -41,6 +41,12 @@ export function formatPropertyMessage(property: Property): string {
   if (property.garage_spots != null) {
     details.push(`Vagas: ${property.garage_spots}`)
   }
+  if (property.built_area != null && property.built_area > 0) {
+    details.push(`Área Construída: ${property.built_area} m²`)
+  }
+  if (property.land_area != null && property.land_area > 0) {
+    details.push(`Área do Terreno: ${property.land_area} m²`)
+  }
 
   if (details.length > 0) {
     lines.push(`*${details.join(' | ')}*`)

@@ -1,12 +1,25 @@
-import { useEffect, useState, useMemo, type SyntheticEvent } from 'react'
+import { useEffect, useState, useMemo, useCallback, type SyntheticEvent } from 'react'
 import { toast } from 'sonner'
 import { getProperties, refreshProperties, type Property } from '@/services/properties'
+import { useRealtime } from '@/hooks/use-realtime'
+import { clearPropertiesCache } from '@/services/properties'
 import { formatPropertyMessage } from '@/lib/property-message'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { BedDouble, Bath, BedSingle, Car, Send, MapPin, Search, RotateCw } from 'lucide-react'
+import {
+  BedDouble,
+  Bath,
+  BedSingle,
+  Car,
+  Send,
+  MapPin,
+  Search,
+  RotateCw,
+  Ruler,
+  Maximize,
+} from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
   Carousel,
@@ -63,6 +76,17 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
   const [sendingId, setSendingId] = useState<string | null>(null)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
 
+  const loadProperties = useCallback(async () => {
+    try {
+      const data = await getProperties()
+      setProperties(data)
+    } catch (e) {
+      console.error('Failed to fetch properties', e)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     let cancelled = false
     const load = async () => {
@@ -80,6 +104,11 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
       cancelled = true
     }
   }, [])
+
+  useRealtime('properties', () => {
+    clearPropertiesCache()
+    loadProperties()
+  })
 
   const handleRefresh = async () => {
     setRefreshing(true)
@@ -309,6 +338,18 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
                         <span className="flex items-center gap-1 text-[11px] text-zinc-600">
                           <Car className="h-3.5 w-3.5 text-zinc-400" />
                           {property.garage_spots}
+                        </span>
+                      )}
+                      {property.built_area != null && property.built_area > 0 && (
+                        <span className="flex items-center gap-1 text-[11px] text-zinc-600">
+                          <Ruler className="h-3.5 w-3.5 text-zinc-400" />
+                          {property.built_area} m²
+                        </span>
+                      )}
+                      {property.land_area != null && property.land_area > 0 && (
+                        <span className="flex items-center gap-1 text-[11px] text-zinc-600">
+                          <Maximize className="h-3.5 w-3.5 text-zinc-400" />
+                          {property.land_area} m²
                         </span>
                       )}
                     </div>
