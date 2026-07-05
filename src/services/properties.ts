@@ -36,3 +36,30 @@ export const clearPropertiesCache = () => {
   cachedProperties = null
   cacheTimestamp = 0
 }
+
+export const refreshProperties = async (): Promise<Property[]> => {
+  cachedProperties = null
+  cacheTimestamp = 0
+  const data = await pb.send('/backend/v1/properties', { method: 'GET' })
+  cachedProperties = data
+  cacheTimestamp = Date.now()
+  return data
+}
+
+export const refreshProperties = async (): Promise<Property[]> => {
+  cachedProperties = null
+  cacheTimestamp = 0
+  const data = await pb.send('/backend/v1/properties', { method: 'GET' })
+  cachedProperties = data
+  cacheTimestamp = Date.now()
+  return data
+}
+
+export const refreshProperties = async (): Promise<Property[]> => {
+  cachedProperties = null
+  cacheTimestamp = 0
+  const data = await pb.send('/backend/v1/properties', { method: 'GET' })
+  cachedProperties = data
+  cacheTimestamp = Date.now()
+  return data
+}

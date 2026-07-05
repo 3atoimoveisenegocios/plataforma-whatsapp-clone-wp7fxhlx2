@@ -1,11 +1,13 @@
 import { useEffect, useState, type SyntheticEvent } from 'react'
-import { getProperties, type Property } from '@/services/properties'
+import { toast } from 'sonner'
+import { getProperties, refreshProperties, type Property } from '@/services/properties'
 import { formatPropertyMessage } from '@/lib/property-message'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { BedDouble, Bath, BedSingle, Car, Send, MapPin, Search } from 'lucide-react'
+import { BedDouble, Bath, BedSingle, Car, Send, MapPin, Search, RotateCw } from 'lucide-react'
+import { cn } from '@/lib/utils'
 import {
   Carousel,
   CarouselContent,
@@ -56,6 +58,7 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
   const [properties, setProperties] = useState<Property[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [sendingId, setSendingId] = useState<string | null>(null)
 
   useEffect(() => {
@@ -75,6 +78,48 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
       cancelled = true
     }
   }, [])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      const data = await refreshProperties()
+      setProperties(data)
+      toast.success('Lista de imóveis atualizada com sucesso!')
+    } catch (err) {
+      console.error('Failed to refresh properties', err)
+      toast.error('Erro ao atualizar a lista de imóveis. Tente novamente.')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      const data = await refreshProperties()
+      setProperties(data)
+      toast.success('Lista de imóveis atualizada com sucesso!')
+    } catch (err) {
+      console.error('Failed to refresh properties', err)
+      toast.error('Erro ao atualizar a lista de imóveis. Tente novamente.')
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      const data = await refreshProperties()
+      setProperties(data)
+      toast.success('Lista de imóveis atualizada com sucesso!')
+    } catch (err) {
+      console.error('Failed to refresh properties', err)
+      toast.error('Erro ao atualizar a lista de imóveis. Tente novamente.')
+    } finally {
+      setRefreshing(false)
+    }
+  }
 
   const handleSend = (property: Property) => {
     setSendingId(property.id)
@@ -98,8 +143,18 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
               disabled
             />
           </div>
-        </div>
-        <ScrollArea className="flex-1">
+          <div className="px-5 pb-3">
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full h-9 text-[13px] font-medium border-zinc-200/70 hover:bg-zinc-50 hover:border-violet-300 text-zinc-700"
+              disabled
+            >
+              <RotateCw className="h-3.5 w-3.5 mr-1.5" />
+              Atualizar Imóveis
+            </Button>
+          </div>
+        </ScrollArea className="flex-1">
           <div className="p-3 space-y-3">
             {[1, 2, 3].map((i) => (
               <div key={i} className="rounded-xl overflow-hidden ring-1 ring-zinc-200/70">
@@ -134,10 +189,19 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
             className="pl-9 h-9 bg-zinc-50/80 border-zinc-200/70 text-[13.5px] placeholder:text-zinc-400 focus-visible:ring-violet-500/30 focus-visible:ring-offset-0 focus-visible:border-violet-300"
           />
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="w-full h-9 mt-2 text-[13px] font-medium border-zinc-200/70 hover:bg-zinc-50 hover:border-violet-300 text-zinc-700"
+          onClick={handleRefresh}
+          disabled={refreshing}
+        >
+          <RotateCw className={cn('h-3.5 w-3.5 mr-1.5', refreshing && 'animate-spin')} />
+          {refreshing ? 'Atualizando...' : 'Atualizar Imóveis'}
+        </Button>
       </div>
 
-      <ScrollArea className="flex-1">
-        {filteredProperties.length === 0 ? (
+    <ScrollArea className="flex-1">        {filteredProperties.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-8 text-center mt-10">
             <div className="h-12 w-12 rounded-full bg-zinc-100 flex items-center justify-center mb-3">
               <MapPin className="h-5 w-5 text-zinc-400" />
