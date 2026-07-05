@@ -343,13 +343,13 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
                       {property.built_area != null && property.built_area > 0 && (
                         <span className="flex items-center gap-1 text-[11px] text-zinc-600">
                           <Ruler className="h-3.5 w-3.5 text-zinc-400" />
-                          {property.built_area} m²
+                          Área Construída: {property.built_area} m²
                         </span>
                       )}
                       {property.land_area != null && property.land_area > 0 && (
                         <span className="flex items-center gap-1 text-[11px] text-zinc-600">
                           <Maximize className="h-3.5 w-3.5 text-zinc-400" />
-                          {property.land_area} m²
+                          Área do Terreno: {property.land_area} m²
                         </span>
                       )}
                     </div>

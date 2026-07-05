@@ -183,8 +183,17 @@ routerAdd(
           bathrooms: Number(item.bathrooms) || 0,
           suites: Number(item.suites) || 0,
           garage_spots: Number(item.garage_spots || item.parking_spots) || 0,
-          built_area: Number(item.built_area || item.constructed_area || item.builtArea) || null,
-          land_area: Number(item.land_area || item.total_area || item.landArea) || null,
+          built_area:
+            Number(
+              item.built_area ||
+                item.constructed_area ||
+                item.builtArea ||
+                item['Área Construída (m²)'],
+            ) || null,
+          land_area:
+            Number(
+              item.land_area || item.total_area || item.landArea || item['Área do Terreno (m²)'],
+            ) || null,
           images: photoUrls,
           cover_image: extCoverImage,
           external_link: item.external_link || item.link || item.url || '',
