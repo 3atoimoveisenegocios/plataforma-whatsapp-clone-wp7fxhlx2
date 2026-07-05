@@ -54,6 +54,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { PropertyCatalog } from '@/components/inbox/PropertyCatalog'
+import type { Property } from '@/services/properties'
 
 export default function Inbox() {
   const [contacts, setContacts] = useState<any[]>([])
@@ -65,6 +68,7 @@ export default function Inbox() {
   const [loadingContacts, setLoadingContacts] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [instance, setInstance] = useState<any>(null)
+  const [activeTab, setActiveTab] = useState('conversas')
 
   // File states
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -446,6 +450,89 @@ export default function Inbox() {
     }
   }
 
+  const handleSendProperty = async (property: Property) => {
+    if (!selectedContact) {
+      toast({ variant: 'destructive', title: 'Selecione uma conversa primeiro' })
+      setActiveTab('conversas')
+      return
+    }
+
+    const lines: string[] = [`🏠 *${property.title}*`]
+    if (property.sale_price)
+      lines.push(`💰 Venda: R$ ${Number(property.sale_price).toLocaleString('pt-BR')}`)
+    if (property.rent_price)
+      lines.push(`📍 Locação: R$ ${Number(property.rent_price).toLocaleString('pt-BR')}`)
+    lines.push('')
+    const features: string[] = []
+    if (property.bedrooms) features.push(`🛏 ${property.bedrooms} Dormitórios`)
+    if (property.bathrooms) features.push(`🚿 ${property.bathrooms} Banheiros`)
+    if (property.suites) features.push(`🛁 ${property.suites} Suítes`)
+    if (property.parking_spots) features.push(`🚗 ${property.parking_spots} Vagas`)
+    if (features.length) lines.push(features.join(' | '))
+    if (property.description) {
+      lines.push('')
+      lines.push(property.description)
+    }
+    const messageText = lines.join('\n')
+
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+    const nowIso = new Date().toISOString()
+    const optimisticMsg = {
+      id: tempId,
+      body: messageText,
+      direction: 'out',
+      type: 'text',
+      sent_at: nowIso,
+      created: nowIso,
+      contact_id: selectedContact.id,
+      status: 'sending',
+    }
+
+    setMessages((prev) => sortMessagesList([...prev, optimisticMsg]))
+
+    setContacts((prev) => {
+      const updated = prev.map((c) =>
+        c.id === selectedContact.id
+          ? { ...c, last_message: '🏠 Imóvel enviado', last_message_at: nowIso }
+          : c,
+      )
+      return updated.sort(
+        (a, b) =>
+          new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime(),
+      )
+    })
+
+    try {
+      const res = await sendMessage(selectedContact.id, {
+        text: messageText,
+        type: 'text',
+        instance_id: selectedContact.instance_id,
+        remote_jid: selectedContact.remote_jid,
+      })
+
+      const createdMsg = res?.message || res
+      if (createdMsg && createdMsg.id) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === createdMsg.id)) {
+            return prev.filter((m) => m.id !== tempId)
+          }
+          return sortMessagesList(prev.map((m) => (m.id === tempId ? createdMsg : m)))
+        })
+      } else {
+        setMessages((prev) =>
+          sortMessagesList(prev.map((m) => (m.id === tempId ? { ...m, status: 'sent' } : m))),
+        )
+      }
+
+      toast({ title: 'Imóvel enviado com sucesso!' })
+      setActiveTab('conversas')
+    } catch (error) {
+      console.error(error)
+      setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m)))
+      toast({ variant: 'destructive', title: 'Erro ao enviar imóvel' })
+    }
+  }
+
   const handleDisconnect = async () => {
     try {
       await logoutInstance()
@@ -605,7 +692,7 @@ export default function Inbox() {
           selectedContact ? 'hidden md:flex' : 'flex',
         )}
       >
-        <div className="px-5 pt-5 pb-4 border-b border-zinc-200/70 bg-white space-y-4">
+        <div className="px-5 pt-5 pb-3 border-b border-zinc-200/70 bg-white">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5 min-w-0">
               <h2 className="text-[15px] font-semibold tracking-tight text-zinc-900">
@@ -664,104 +751,128 @@ export default function Inbox() {
               </Button>
             )}
           </div>
-
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-[15px] w-[15px] text-zinc-400 pointer-events-none" />
-            <Input
-              placeholder="Buscar contatos..."
-              className="pl-9 h-9 bg-zinc-50/80 border-zinc-200/70 text-[13.5px] placeholder:text-zinc-400 focus-visible:ring-violet-500/30 focus-visible:ring-offset-0 focus-visible:border-violet-300"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
         </div>
 
-        <ScrollArea className="flex-1">
-          {loadingContacts ? (
-            <div className="flex items-center justify-center p-10">
-              <Loader2 className="h-5 w-5 animate-spin text-violet-500" />
-            </div>
-          ) : filteredContacts.length === 0 ? (
-            <div className="flex flex-col items-center justify-center p-10 text-center">
-              <div className="h-12 w-12 rounded-full bg-zinc-100 flex items-center justify-center mb-3">
-                <User className="h-5 w-5 text-zinc-400" />
+        <div className="px-3 py-2 border-b border-zinc-200/70 bg-white">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="w-full">
+              <TabsTrigger value="conversas" className="flex-1 text-xs">
+                Conversas
+              </TabsTrigger>
+              <TabsTrigger value="imoveis" className="flex-1 text-xs">
+                Imóveis
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+        </div>
+
+        {activeTab === 'conversas' ? (
+          <>
+            <div className="px-5 py-3 border-b border-zinc-200/70 bg-white">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-[15px] w-[15px] text-zinc-400 pointer-events-none" />
+                <Input
+                  placeholder="Buscar contatos..."
+                  className="pl-9 h-9 bg-zinc-50/80 border-zinc-200/70 text-[13.5px] placeholder:text-zinc-400 focus-visible:ring-violet-500/30 focus-visible:ring-offset-0 focus-visible:border-violet-300"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
               </div>
-              <p className="text-sm font-medium text-zinc-700">Nenhum contato encontrado</p>
-              <p className="text-xs text-zinc-500 mt-1">
-                As conversas aparecerão aqui ao receber mensagens
-              </p>
             </div>
-          ) : (
-            <div className="w-full">
-              <div className="p-2 space-y-px">
-                {filteredContacts.map((contact) => {
-                  const isActive = selectedContact?.id === contact.id
-                  return (
-                    <button
-                      key={contact.id}
-                      onClick={() => setSelectedContact(contact)}
-                      className={cn(
-                        'w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-all',
-                        isActive
-                          ? 'bg-violet-50 ring-1 ring-violet-100'
-                          : 'hover:bg-zinc-50 ring-1 ring-transparent',
-                      )}
-                    >
-                      <span
-                        className={cn(
-                          'relative flex overflow-hidden rounded-full h-11 w-11 shrink-0 ring-2 transition-colors',
-                          isActive ? 'ring-violet-200' : 'ring-zinc-100',
-                        )}
-                      >
-                        <span
+
+            <ScrollArea className="flex-1">
+              {loadingContacts ? (
+                <div className="flex items-center justify-center p-10">
+                  <Loader2 className="h-5 w-5 animate-spin text-violet-500" />
+                </div>
+              ) : filteredContacts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center p-10 text-center">
+                  <div className="h-12 w-12 rounded-full bg-zinc-100 flex items-center justify-center mb-3">
+                    <User className="h-5 w-5 text-zinc-400" />
+                  </div>
+                  <p className="text-sm font-medium text-zinc-700">Nenhum contato encontrado</p>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    As conversas aparecerão aqui ao receber mensagens
+                  </p>
+                </div>
+              ) : (
+                <div className="w-full">
+                  <div className="p-2 space-y-px">
+                    {filteredContacts.map((contact) => {
+                      const isActive = selectedContact?.id === contact.id
+                      return (
+                        <button
+                          key={contact.id}
+                          onClick={() => setSelectedContact(contact)}
                           className={cn(
-                            'flex h-full w-full items-center justify-center rounded-full text-[13px] font-semibold',
+                            'w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-all',
                             isActive
-                              ? 'bg-gradient-to-br from-violet-100 to-violet-200 text-violet-700'
-                              : 'bg-gradient-to-br from-zinc-100 to-zinc-200 text-zinc-600',
+                              ? 'bg-violet-50 ring-1 ring-violet-100'
+                              : 'hover:bg-zinc-50 ring-1 ring-transparent',
                           )}
                         >
-                          {contact.name?.substring(0, 2).toUpperCase() ||
-                            contact.phone?.substring(0, 2)}
-                        </span>
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-0.5 gap-2">
                           <span
                             className={cn(
-                              'text-[14px] font-semibold truncate flex-1 min-w-0 tracking-tight',
-                              isActive ? 'text-violet-900' : 'text-zinc-900',
+                              'relative flex overflow-hidden rounded-full h-11 w-11 shrink-0 ring-2 transition-colors',
+                              isActive ? 'ring-violet-200' : 'ring-zinc-100',
                             )}
                           >
-                            {contact.name || contact.phone}
-                          </span>
-                          {contact.last_message_at && (
                             <span
                               className={cn(
-                                'text-[11px] shrink-0 whitespace-nowrap font-medium',
-                                isActive ? 'text-violet-600' : 'text-zinc-400',
+                                'flex h-full w-full items-center justify-center rounded-full text-[13px] font-semibold',
+                                isActive
+                                  ? 'bg-gradient-to-br from-violet-100 to-violet-200 text-violet-700'
+                                  : 'bg-gradient-to-br from-zinc-100 to-zinc-200 text-zinc-600',
                               )}
                             >
-                              {format(new Date(contact.last_message_at), 'HH:mm')}
+                              {contact.name?.substring(0, 2).toUpperCase() ||
+                                contact.phone?.substring(0, 2)}
                             </span>
-                          )}
-                        </div>
-                        <p
-                          className={cn(
-                            'text-[12.5px] truncate leading-snug',
-                            isActive ? 'text-violet-700/80' : 'text-zinc-500',
-                          )}
-                        >
-                          {contact.last_message || 'Nenhuma mensagem ainda'}
-                        </p>
-                      </div>
-                    </button>
-                  )
-                })}
-              </div>
-            </div>
-          )}
-        </ScrollArea>
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center justify-between mb-0.5 gap-2">
+                              <span
+                                className={cn(
+                                  'text-[14px] font-semibold truncate flex-1 min-w-0 tracking-tight',
+                                  isActive ? 'text-violet-900' : 'text-zinc-900',
+                                )}
+                              >
+                                {contact.name || contact.phone}
+                              </span>
+                              {contact.last_message_at && (
+                                <span
+                                  className={cn(
+                                    'text-[11px] shrink-0 whitespace-nowrap font-medium',
+                                    isActive ? 'text-violet-600' : 'text-zinc-400',
+                                  )}
+                                >
+                                  {format(new Date(contact.last_message_at), 'HH:mm')}
+                                </span>
+                              )}
+                            </div>
+                            <p
+                              className={cn(
+                                'text-[12.5px] truncate leading-snug',
+                                isActive ? 'text-violet-700/80' : 'text-zinc-500',
+                              )}
+                            >
+                              {contact.last_message || 'Nenhuma mensagem ainda'}
+                            </p>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+              )}
+            </ScrollArea>
+          </>
+        ) : (
+          <PropertyCatalog
+            onSendProperty={handleSendProperty}
+            hasSelectedContact={!!selectedContact}
+          />
+        )}
       </div>
 
       {/* Chat Area */}
