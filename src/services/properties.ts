@@ -2,16 +2,18 @@ import pb from '@/lib/pocketbase/client'
 
 export interface Property {
   id: string
-  title: string
-  sale_price: number | null
-  rent_price: number | null
+  name: string
   description: string
   bedrooms: number
   bathrooms: number
   suites: number
-  parking_spots: number
-  photos: string[]
-  link: string
+  garage_spots: number
+  images: string[]
+  cover_image: string | null
+  external_link: string
+  sale_price?: number | null
+  rent_price?: number | null
+  source: 'local' | 'external'
 }
 
 let cachedProperties: Property[] | null = null

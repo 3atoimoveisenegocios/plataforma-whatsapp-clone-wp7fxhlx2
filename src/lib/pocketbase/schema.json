@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-05T17:46:21.698Z",
+  "generatedAt": "2026-07-05T18:10:16.026Z",
   "collections": [
     {
       "name": "users",
@@ -445,6 +445,12 @@
           "required": false,
           "system": false,
           "autodateTriggers": ["onCreate", "onUpdate"]
+        },
+        {
+          "name": "cover_image",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE INDEX idx_properties_name ON properties (name)"]
