@@ -17,6 +17,29 @@ routerAdd(
       return 'id_' + (id || '')
     }
 
+    var parseNumber = function (val) {
+      if (val == null) return null
+      if (typeof val === 'number') return isNaN(val) ? null : val
+      var str = String(val).trim()
+      if (!str) return null
+      str = str.replace(/[^\d,.\-]/g, '')
+      if (str.indexOf(',') !== -1 && str.indexOf('.') !== -1) {
+        str = str.replace(/\./g, '').replace(',', '.')
+      } else if (str.indexOf(',') !== -1) {
+        str = str.replace(',', '.')
+      }
+      var num = Number(str)
+      return isNaN(num) ? null : num
+    }
+
+    var getFirstDefined = function (obj, keys) {
+      for (var i = 0; i < keys.length; i++) {
+        var v = obj[keys[i]]
+        if (v != null && v !== '') return v
+      }
+      return undefined
+    }
+
     // --- 1. Fetch from local properties collection ---
     try {
       var userId = e.auth ? e.auth.id : ''
@@ -75,8 +98,8 @@ routerAdd(
             bathrooms: Number(record.get('bathrooms')) || 0,
             suites: Number(record.get('suites')) || 0,
             garage_spots: Number(record.get('garage_spots')) || 0,
-            built_area: Number(record.get('built_area')) || null,
-            land_area: Number(record.get('land_area')) || null,
+            built_area: parseNumber(record.get('built_area')),
+            land_area: parseNumber(record.get('land_area')),
             images: imageUrls,
             cover_image: coverImageUrl,
             external_link: record.getString('external_link') || '',
@@ -183,17 +206,28 @@ routerAdd(
           bathrooms: Number(item.bathrooms) || 0,
           suites: Number(item.suites) || 0,
           garage_spots: Number(item.garage_spots || item.parking_spots) || 0,
-          built_area:
-            Number(
-              item.built_area ||
-                item.constructed_area ||
-                item.builtArea ||
-                item['Área Construída (m²)'],
-            ) || null,
-          land_area:
-            Number(
-              item.land_area || item.total_area || item.landArea || item['Área do Terreno (m²)'],
-            ) || null,
+          built_area: parseNumber(
+            getFirstDefined(item, [
+              'built_area',
+              'constructed_area',
+              'builtArea',
+              'area_construida',
+              'areaConstruida',
+              'Área Construída (m²)',
+              'Área Construída',
+            ]),
+          ),
+          land_area: parseNumber(
+            getFirstDefined(item, [
+              'land_area',
+              'total_area',
+              'landArea',
+              'area_terreno',
+              'areaTerreno',
+              'Área do Terreno (m²)',
+              'Área do Terreno',
+            ]),
+          ),
           images: photoUrls,
           cover_image: extCoverImage,
           external_link: item.external_link || item.link || item.url || '',
