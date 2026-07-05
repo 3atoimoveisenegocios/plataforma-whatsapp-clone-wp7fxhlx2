@@ -126,7 +126,7 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
               Atualizar Imóveis
             </Button>
           </div>
-        </ScrollArea className="flex-1">
+        <ScrollArea className="flex-1">
           <div className="p-3 space-y-3">
             {[1, 2, 3].map((i) => (
               <div key={i} className="rounded-xl overflow-hidden ring-1 ring-zinc-200/70">
