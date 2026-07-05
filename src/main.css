@@ -113,6 +113,10 @@
     padding: 0 !important;
     margin: 0 !important;
   }
+
+  [data-radix-scroll-area-viewport] > div {
+    display: block !important;
+  }
 }
 
 @layer utilities {
