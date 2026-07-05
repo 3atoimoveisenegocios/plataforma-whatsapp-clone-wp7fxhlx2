@@ -57,6 +57,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PropertyCatalog } from '@/components/inbox/PropertyCatalog'
 import type { Property } from '@/services/properties'
+import { getPropertyImageUrl } from '@/lib/property-message'
 
 export default function Inbox() {
   const [contacts, setContacts] = useState<any[]>([])
@@ -450,32 +451,31 @@ export default function Inbox() {
     }
   }
 
-  const handleSendProperty = async (property: Property) => {
+  const handleSendProperty = async (property: Property, message: string) => {
     if (!selectedContact) {
       toast({ variant: 'destructive', title: 'Selecione uma conversa primeiro' })
       setActiveTab('conversas')
       return
     }
 
-    const lines: string[] = [
-      `*${property.title}*`,
-      `Quartos: ${property.bedrooms ?? 0} | Banheiros: ${property.bathrooms ?? 0} | Suítes: ${property.suites ?? 0} | Vagas: ${property.parking_spots ?? 0}`,
-      '',
-      property.description || 'Não informado',
-    ]
-    const messageText = lines.join('\n')
+    const imageUrl = getPropertyImageUrl(property)
+    const hasImage = !!imageUrl
 
     const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
     const nowIso = new Date().toISOString()
     const optimisticMsg = {
       id: tempId,
-      body: messageText,
+      body: hasImage ? '' : message,
+      caption: hasImage ? message : '',
       direction: 'out',
-      type: 'text',
+      type: hasImage ? 'image' : 'text',
       sent_at: nowIso,
       created: nowIso,
       contact_id: selectedContact.id,
       status: 'sending',
+      localUrl: imageUrl || undefined,
+      file_name: hasImage ? 'property-image.jpg' : undefined,
+      mime_type: hasImage ? 'image/jpeg' : undefined,
     }
 
     setMessages((prev) => sortMessagesList([...prev, optimisticMsg]))
@@ -493,9 +493,32 @@ export default function Inbox() {
     })
 
     try {
+      let file: File | undefined
+      let base64: string | undefined
+
+      if (imageUrl) {
+        try {
+          const response = await fetch(imageUrl)
+          const blob = await response.blob()
+          file = new File([blob], 'property-image.jpg', { type: blob.type || 'image/jpeg' })
+          base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.onload = () => {
+              const result = reader.result as string
+              resolve(result.split(',')[1])
+            }
+            reader.readAsDataURL(file!)
+          })
+        } catch (e) {
+          console.error('Failed to fetch property image', e)
+        }
+      }
+
       const res = await sendMessage(selectedContact.id, {
-        text: messageText,
-        type: 'text',
+        text: message,
+        file,
+        type: file ? 'image' : 'text',
+        base64,
         instance_id: selectedContact.instance_id,
         remote_jid: selectedContact.remote_jid,
       })
