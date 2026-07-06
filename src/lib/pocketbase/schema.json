@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-06T17:08:32.658Z",
+  "generatedAt": "2026-07-06T22:58:53.817Z",
   "collections": [
     {
       "name": "users",
@@ -29,19 +29,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -78,12 +73,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "pending",
-            "connecting",
-            "connected",
-            "disconnected"
-          ]
+          "selectValues": ["pending", "connecting", "connected", "disconnected"]
         },
         {
           "name": "qrcode",
@@ -96,24 +86,17 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE UNIQUE INDEX idx_wi_name ON whatsapp_instances (instance_name)"
-      ]
+      "indexes": ["CREATE UNIQUE INDEX idx_wi_name ON whatsapp_instances (instance_name)"]
     },
     {
       "name": "whatsapp_contacts",
@@ -175,29 +158,32 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "agent_paused",
           "type": "bool",
           "required": false,
           "system": false
+        },
+        {
+          "name": "status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["em_conversa", "aguardando", "resolvido", "perdido"]
         }
       ],
       "indexes": [
-        "CREATE INDEX idx_wc_jid ON whatsapp_contacts (user_id, remote_jid)"
+        "CREATE INDEX idx_wc_jid ON whatsapp_contacts (user_id, remote_jid)",
+        "CREATE INDEX `idx_wc_status` ON `whatsapp_contacts` (status)"
       ]
     },
     {
@@ -249,10 +235,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "in",
-            "out"
-          ]
+          "selectValues": ["in", "out"]
         },
         {
           "name": "body",
@@ -271,32 +254,21 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "type",
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "text",
-            "image",
-            "audio",
-            "document",
-            "video"
-          ]
+          "selectValues": ["text", "image", "audio", "document", "video"]
         },
         {
           "name": "media_file",
@@ -323,9 +295,7 @@
           "system": false
         }
       ],
-      "indexes": [
-        "CREATE UNIQUE INDEX idx_wm_id ON whatsapp_messages (message_id)"
-      ]
+      "indexes": ["CREATE UNIQUE INDEX idx_wm_id ON whatsapp_messages (message_id)"]
     },
     {
       "name": "ai_agents",
@@ -381,29 +351,21 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "provider",
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "gemini",
-            "openai"
-          ]
+          "selectValues": ["gemini", "openai"]
         },
         {
           "name": "api_key",
@@ -485,19 +447,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "cover_image",
@@ -554,9 +511,7 @@
           "system": false
         }
       ],
-      "indexes": [
-        "CREATE INDEX idx_properties_name ON properties (name)"
-      ]
+      "indexes": ["CREATE INDEX idx_properties_name ON properties (name)"]
     }
   ]
 }

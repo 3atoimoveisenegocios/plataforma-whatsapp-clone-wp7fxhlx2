@@ -25,6 +25,8 @@ import {
   Lock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { ContactSelector } from '@/components/inbox/ContactSelector'
+import { sendMessage } from '@/services/whatsapp'
 import {
   Carousel,
   CarouselContent,
@@ -37,8 +39,8 @@ const PLACEHOLDER_IMAGE = 'https://img.usecurling.com/p/400/300?q=real%20estate%
 const PAGE_SIZE = 24
 
 interface PropertyCatalogProps {
-  onSendProperty: (property: Property, message: string) => void
-  hasSelectedContact: boolean
+  onSendProperty: (property: Property, message: string, contactId?: string) => void
+  hasSelectedContact?: boolean
 }
 
 const formatPrice = (value: number | null | undefined): string | null => {
@@ -72,13 +74,17 @@ function handleImageError(
   }
 }
 
-export function PropertyCatalog({ onSendProperty, hasSelectedContact }: PropertyCatalogProps) {
+export function PropertyCatalog({
+  onSendProperty,
+  hasSelectedContact = false,
+}: PropertyCatalogProps) {
   const [properties, setProperties] = useState<Property[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [sendingId, setSendingId] = useState<string | null>(null)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
+  const [selectedContact, setSelectedContact] = useState<any | null>(null)
 
   const loadProperties = useCallback(async () => {
     try {
@@ -129,10 +135,30 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
     }
   }
 
-  const handleSend = (property: Property) => {
+  const handleSend = async (property: Property) => {
+    if (!selectedContact && !hasSelectedContact) {
+      toast.error('Selecione um contato antes de enviar.')
+      return
+    }
     setSendingId(property.id)
-    onSendProperty(property, formatPropertyMessage(property))
-    setTimeout(() => setSendingId(null), 2000)
+    const message = formatPropertyMessage(property)
+    if (selectedContact) {
+      try {
+        await sendMessage(selectedContact.id, {
+          text: message,
+          instance_id: selectedContact.instance_id,
+          remote_jid: selectedContact.remote_jid,
+        })
+        toast.success('Imóvel enviado com sucesso!')
+      } catch (e) {
+        toast.error('Erro ao enviar imóvel. Tente novamente.')
+      } finally {
+        setTimeout(() => setSendingId(null), 2000)
+      }
+    } else {
+      onSendProperty(property, message)
+      setTimeout(() => setSendingId(null), 2000)
+    }
   }
 
   const filteredProperties = useMemo(
@@ -153,6 +179,9 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
     return (
       <div className="flex-1 overflow-hidden flex flex-col">
         <div className="px-5 py-3 border-b border-zinc-200/70 bg-white">
+          <div className="mb-2">
+            <Skeleton className="h-10 w-full rounded-md" />
+          </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-[15px] w-[15px] text-zinc-400 pointer-events-none" />
             <Input
@@ -199,6 +228,9 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
   return (
     <div className="flex-1 overflow-hidden flex flex-col">
       <div className="px-5 py-3 border-b border-zinc-200/70 bg-white shrink-0">
+        <div className="mb-2">
+          <ContactSelector selectedContact={selectedContact} onSelect={setSelectedContact} />
+        </div>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-[15px] w-[15px] text-zinc-400 pointer-events-none" />
           <Input
@@ -403,7 +435,9 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
                       size="sm"
                       className="w-full h-8 text-xs font-medium bg-violet-600 hover:bg-violet-700"
                       onClick={() => handleSend(property)}
-                      disabled={!hasSelectedContact || sendingId === property.id}
+                      disabled={
+                        (!hasSelectedContact && !selectedContact) || sendingId === property.id
+                      }
                     >
                       <Send className="h-3.5 w-3.5 mr-1.5" />
                       {sendingId === property.id ? 'Enviando...' : 'Enviar no chat'}
