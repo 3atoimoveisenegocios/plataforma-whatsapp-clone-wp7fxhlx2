@@ -47,6 +47,18 @@ export function formatPropertyMessage(property: Property): string {
   if (property.land_area != null && property.land_area > 0) {
     details.push(`Área do Terreno: ${property.land_area} m²`)
   }
+  if (property.useful_area != null && property.useful_area > 0) {
+    details.push(`Área Útil: ${property.useful_area} m²`)
+  }
+  if (property.total_area != null && property.total_area > 0) {
+    details.push(`Área Total: ${property.total_area} m²`)
+  }
+  if (property.common_area != null && property.common_area > 0) {
+    details.push(`Área Comum: ${property.common_area} m²`)
+  }
+  if (property.private_area != null && property.private_area > 0) {
+    details.push(`Área Privada: ${property.private_area} m²`)
+  }
 
   if (details.length > 0) {
     lines.push(`*${details.join(' | ')}*`)

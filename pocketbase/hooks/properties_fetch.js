@@ -22,7 +22,11 @@ routerAdd(
       if (typeof val === 'number') return isNaN(val) ? null : val
       var str = String(val).trim()
       if (!str) return null
-      str = str.replace(/[^\d,.\-]/g, '')
+      str = str
+        .replace(/m²/gi, '')
+        .replace(/m2/gi, '')
+        .replace(/[^0-9,.\-]/g, '')
+        .trim()
       if (str.indexOf(',') !== -1 && str.indexOf('.') !== -1) {
         str = str.replace(/\./g, '').replace(',', '.')
       } else if (str.indexOf(',') !== -1) {
@@ -100,6 +104,10 @@ routerAdd(
             garage_spots: Number(record.get('garage_spots')) || 0,
             built_area: parseNumber(record.get('built_area')),
             land_area: parseNumber(record.get('land_area')),
+            useful_area: parseNumber(record.get('useful_area')),
+            total_area: parseNumber(record.get('total_area')),
+            common_area: parseNumber(record.get('common_area')),
+            private_area: parseNumber(record.get('private_area')),
             images: imageUrls,
             cover_image: coverImageUrl,
             external_link: record.getString('external_link') || '',
@@ -208,6 +216,7 @@ routerAdd(
           garage_spots: Number(item.garage_spots || item.parking_spots) || 0,
           built_area: parseNumber(
             getFirstDefined(item, [
+              'area_built',
               'built_area',
               'constructed_area',
               'builtArea',
@@ -219,13 +228,56 @@ routerAdd(
           ),
           land_area: parseNumber(
             getFirstDefined(item, [
+              'area_land',
               'land_area',
-              'total_area',
               'landArea',
               'area_terreno',
               'areaTerreno',
               'Área do Terreno (m²)',
               'Área do Terreno',
+            ]),
+          ),
+          useful_area: parseNumber(
+            getFirstDefined(item, [
+              'area_useful',
+              'useful_area',
+              'usefulArea',
+              'area_util',
+              'areaUtil',
+              'Área Útil (m²)',
+              'Área Útil',
+            ]),
+          ),
+          total_area: parseNumber(
+            getFirstDefined(item, [
+              'area_total',
+              'total_area',
+              'totalArea',
+              'area_total_terreno',
+              'Área Total (m²)',
+              'Área Total',
+            ]),
+          ),
+          common_area: parseNumber(
+            getFirstDefined(item, [
+              'area_common',
+              'common_area',
+              'commonArea',
+              'area_comum',
+              'areaComum',
+              'Área Comum (m²)',
+              'Área Comum',
+            ]),
+          ),
+          private_area: parseNumber(
+            getFirstDefined(item, [
+              'area_private',
+              'private_area',
+              'privateArea',
+              'area_privada',
+              'areaPrivada',
+              'Área Privada (m²)',
+              'Área Privada',
             ]),
           ),
           images: photoUrls,

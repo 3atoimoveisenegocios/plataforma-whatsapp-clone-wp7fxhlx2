@@ -19,6 +19,10 @@ import {
   RotateCw,
   Ruler,
   Maximize,
+  Maximize2,
+  Layers,
+  Building2,
+  Lock,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import {
@@ -315,27 +319,39 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
                       </p>
                     )}
 
-                    <div className="flex flex-wrap items-center gap-3 py-1">
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-1">
                       {property.bedrooms > 0 && (
-                        <span className="flex items-center gap-1 text-[11px] text-zinc-600">
+                        <span
+                          className="flex items-center gap-1 text-[11px] text-zinc-600"
+                          title="Quartos"
+                        >
                           <BedDouble className="h-3.5 w-3.5 text-zinc-400" />
                           {property.bedrooms}
                         </span>
                       )}
                       {property.bathrooms > 0 && (
-                        <span className="flex items-center gap-1 text-[11px] text-zinc-600">
+                        <span
+                          className="flex items-center gap-1 text-[11px] text-zinc-600"
+                          title="Banheiros"
+                        >
                           <Bath className="h-3.5 w-3.5 text-zinc-400" />
                           {property.bathrooms}
                         </span>
                       )}
                       {property.suites > 0 && (
-                        <span className="flex items-center gap-1 text-[11px] text-zinc-600">
+                        <span
+                          className="flex items-center gap-1 text-[11px] text-zinc-600"
+                          title="Suítes"
+                        >
                           <BedSingle className="h-3.5 w-3.5 text-zinc-400" />
                           {property.suites}
                         </span>
                       )}
                       {property.garage_spots > 0 && (
-                        <span className="flex items-center gap-1 text-[11px] text-zinc-600">
+                        <span
+                          className="flex items-center gap-1 text-[11px] text-zinc-600"
+                          title="Vagas"
+                        >
                           <Car className="h-3.5 w-3.5 text-zinc-400" />
                           {property.garage_spots}
                         </span>
@@ -343,13 +359,37 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
                       {property.built_area != null && property.built_area > 0 && (
                         <span className="flex items-center gap-1 text-[11px] text-zinc-600">
                           <Ruler className="h-3.5 w-3.5 text-zinc-400" />
-                          Área Construída: {property.built_area} m²
+                          {property.built_area} m²
                         </span>
                       )}
                       {property.land_area != null && property.land_area > 0 && (
                         <span className="flex items-center gap-1 text-[11px] text-zinc-600">
                           <Maximize className="h-3.5 w-3.5 text-zinc-400" />
-                          Área do Terreno: {property.land_area} m²
+                          {property.land_area} m²
+                        </span>
+                      )}
+                      {property.useful_area != null && property.useful_area > 0 && (
+                        <span className="flex items-center gap-1 text-[11px] text-zinc-600">
+                          <Maximize2 className="h-3.5 w-3.5 text-zinc-400" />
+                          {property.useful_area} m²
+                        </span>
+                      )}
+                      {property.total_area != null && property.total_area > 0 && (
+                        <span className="flex items-center gap-1 text-[11px] text-zinc-600">
+                          <Layers className="h-3.5 w-3.5 text-zinc-400" />
+                          {property.total_area} m²
+                        </span>
+                      )}
+                      {property.common_area != null && property.common_area > 0 && (
+                        <span className="flex items-center gap-1 text-[11px] text-zinc-600">
+                          <Building2 className="h-3.5 w-3.5 text-zinc-400" />
+                          {property.common_area} m²
+                        </span>
+                      )}
+                      {property.private_area != null && property.private_area > 0 && (
+                        <span className="flex items-center gap-1 text-[11px] text-zinc-600">
+                          <Lock className="h-3.5 w-3.5 text-zinc-400" />
+                          {property.private_area} m²
                         </span>
                       )}
                     </div>

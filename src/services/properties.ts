@@ -15,6 +15,10 @@ export interface Property {
   rent_price?: number | null
   built_area?: number | null
   land_area?: number | null
+  useful_area?: number | null
+  total_area?: number | null
+  common_area?: number | null
+  private_area?: number | null
   source: 'local' | 'external'
 }
 
