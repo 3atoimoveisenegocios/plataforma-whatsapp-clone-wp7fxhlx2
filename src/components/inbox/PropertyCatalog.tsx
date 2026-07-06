@@ -288,30 +288,35 @@ export function PropertyCatalog({ onSendProperty, hasSelectedContact }: Property
                       {property.name}
                     </h3>
 
-                    {(property.sale_price || property.rent_price) && (
-                      <div className="flex flex-wrap gap-x-3 gap-y-1">
-                        {property.sale_price ? (
-                          <div>
-                            <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
-                              Venda
-                            </span>
-                            <p className="text-sm font-bold text-emerald-600">
-                              {formatPrice(property.sale_price)}
-                            </p>
-                          </div>
-                        ) : null}
-                        {property.rent_price ? (
-                          <div>
-                            <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
-                              Locação
-                            </span>
-                            <p className="text-sm font-bold text-violet-600">
-                              {formatPrice(property.rent_price)}
-                            </p>
-                          </div>
-                        ) : null}
-                      </div>
-                    )}
+                    {(() => {
+                      const priceSale = property.price_sale ?? property.sale_price
+                      const priceRent = property.price_rent ?? property.rent_price
+                      if (!priceSale && !priceRent) return null
+                      return (
+                        <div className="flex flex-wrap gap-x-3 gap-y-1">
+                          {priceSale ? (
+                            <div>
+                              <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
+                                Venda
+                              </span>
+                              <p className="text-sm font-bold text-emerald-600">
+                                {formatPrice(priceSale)}
+                              </p>
+                            </div>
+                          ) : null}
+                          {priceRent ? (
+                            <div>
+                              <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
+                                Locação
+                              </span>
+                              <p className="text-sm font-bold text-violet-600">
+                                {formatPrice(priceRent)}
+                              </p>
+                            </div>
+                          ) : null}
+                        </div>
+                      )
+                    })()}
 
                     {property.description && (
                       <p className="text-xs text-zinc-600 line-clamp-3 leading-relaxed">

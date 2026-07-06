@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-06T01:47:08.978Z",
+  "generatedAt": "2026-07-06T02:21:22.395Z",
   "collections": [
     {
       "name": "users",
@@ -484,6 +484,18 @@
         },
         {
           "name": "private_area",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "price_sale",
+          "type": "number",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "price_rent",
           "type": "number",
           "required": false,
           "system": false

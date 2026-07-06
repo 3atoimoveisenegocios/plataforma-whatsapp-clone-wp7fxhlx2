@@ -11,6 +11,8 @@ export interface Property {
   images: string[]
   cover_image: string | null
   external_link: string
+  price_sale?: number | null
+  price_rent?: number | null
   sale_price?: number | null
   rent_price?: number | null
   built_area?: number | null

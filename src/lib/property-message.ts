@@ -32,6 +32,27 @@ export function formatPropertyMessage(property: Property): string {
   if (property.bedrooms != null) {
     details.push(`Quartos: ${property.bedrooms}`)
   }
+
+  const priceSale = property.price_sale ?? property.sale_price
+  const priceRent = property.price_rent ?? property.rent_price
+
+  if (priceSale != null && priceSale > 0) {
+    const formatted = Number(priceSale).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      minimumFractionDigits: 2,
+    })
+    details.push(`Valor de Venda: ${formatted}`)
+  }
+
+  if (priceRent != null && priceRent > 0) {
+    const formatted = Number(priceRent).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      minimumFractionDigits: 2,
+    })
+    details.push(`Valor de Locação: ${formatted}`)
+  }
   if (property.bathrooms != null) {
     details.push(`Banheiros: ${property.bathrooms}`)
   }

@@ -108,6 +108,8 @@ routerAdd(
             total_area: parseNumber(record.get('total_area')),
             common_area: parseNumber(record.get('common_area')),
             private_area: parseNumber(record.get('private_area')),
+            price_sale: parseNumber(getFirstDefined(record, ['price_sale', 'sale_price'])),
+            price_rent: parseNumber(getFirstDefined(record, ['price_rent', 'rent_price'])),
             images: imageUrls,
             cover_image: coverImageUrl,
             external_link: record.getString('external_link') || '',
@@ -206,6 +208,32 @@ routerAdd(
         if (seenKeys[extDKey]) continue
         seenKeys[extDKey] = true
 
+        var extPriceSale = parseNumber(
+          getFirstDefined(item, [
+            'price_sale',
+            'sale_price',
+            'preco_venda',
+            'precoVenda',
+            'valor_venda',
+            'valorVenda',
+            'salePrice',
+            'Valor de Venda',
+            'Preço de Venda',
+          ]),
+        )
+        var extPriceRent = parseNumber(
+          getFirstDefined(item, [
+            'price_rent',
+            'rent_price',
+            'preco_aluguel',
+            'precoAluguel',
+            'valor_aluguel',
+            'valorAluguel',
+            'rentPrice',
+            'Valor de Locação',
+            'Preço de Aluguel',
+          ]),
+        )
         allProperties.push({
           id: item.id || '',
           name: itemName,
@@ -283,8 +311,10 @@ routerAdd(
           images: photoUrls,
           cover_image: extCoverImage,
           external_link: item.external_link || item.link || item.url || '',
-          sale_price: item.sale_price || null,
-          rent_price: item.rent_price || null,
+          price_sale: extPriceSale,
+          price_rent: extPriceRent,
+          sale_price: extPriceSale,
+          rent_price: extPriceRent,
           source: 'external',
         })
       }
