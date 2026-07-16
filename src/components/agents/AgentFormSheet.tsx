@@ -2,11 +2,11 @@ import { useEffect, useState } from 'react'
 import { z } from 'zod'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
-import pb from '@/lib/pocketbase/client'
-import { extractFieldErrors } from '@/lib/pocketbase/errors'
 import { useAuth } from '@/hooks/use-auth'
 import { createAiAgent, updateAiAgent } from '@/services/ai_agents'
+import { extractFieldErrors } from '@/lib/pocketbase/errors'
 import {
   Sheet,
   SheetContent,
@@ -34,18 +34,20 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
+import pb from '@/lib/pocketbase/client'
 
 const DAYS_OF_WEEK = [
-  { value: 'domingo', label: 'Domingo' },
-  { value: 'segunda', label: 'Segunda' },
-  { value: 'terca', label: 'Terça' },
-  { value: 'quarta', label: 'Quarta' },
-  { value: 'quinta', label: 'Quinta' },
-  { value: 'sexta', label: 'Sexta' },
-  { value: 'sabado', label: 'Sábado' },
+  { value: 'sunday', label: 'Domingo' },
+  { value: 'monday', label: 'Segunda' },
+  { value: 'tuesday', label: 'Terça' },
+  { value: 'wednesday', label: 'Quarta' },
+  { value: 'thursday', label: 'Quinta' },
+  { value: 'friday', label: 'Sexta' },
+  { value: 'saturday', label: 'Sábado' },
 ]
 
 const formSchema = z.object({
+  instance_id: z.string().min(1, 'Instância é obrigatória'),
   name: z.string().min(1, 'Nome é obrigatório'),
   description: z.string().optional(),
   provider: z.enum(['gemini', 'openai'], { required_error: 'Provedor é obrigatório' }),
@@ -76,6 +78,7 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
   const form = useForm<AgentFormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
+      instance_id: '',
       name: '',
       description: '',
       provider: 'openai',
@@ -107,22 +110,25 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
   useEffect(() => {
     if (agent) {
       form.reset({
-        name: agent.name,
+        instance_id: agent.instance_id || '',
+        name: agent.name || '',
         description: agent.description || '',
         provider: agent.provider || 'openai',
         api_key: agent.api_key || '',
-        system_prompt: agent.system_prompt,
-        active: agent.active,
-        business_hours_enabled: agent.business_hours_enabled || false,
-        operating_days: agent.operating_days || [],
+        system_prompt: agent.system_prompt || '',
+        active: agent.active ?? true,
+        business_hours_enabled: agent.business_hours_enabled ?? false,
+        operating_days: Array.isArray(agent.operating_days) ? agent.operating_days : [],
         start_time: agent.start_time || '09:00',
         end_time: agent.end_time || '18:00',
         out_of_hours_message: agent.out_of_hours_message || '',
-        welcome_enabled: agent.welcome_enabled || false,
+        welcome_enabled: agent.welcome_enabled ?? false,
         welcome_message: agent.welcome_message || '',
       })
     } else {
+      const firstInstanceId = instances.length > 0 ? instances[0].id : ''
       form.reset({
+        instance_id: firstInstanceId,
         name: '',
         description: '',
         provider: 'openai',
@@ -138,7 +144,7 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
         welcome_message: '',
       })
     }
-  }, [agent, form, open])
+  }, [agent, form, open, instances])
 
   const toggleDay = (day: string) => {
     const current = form.getValues('operating_days') || []
@@ -151,14 +157,7 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
   const onSubmit = async (values: AgentFormValues) => {
     if (!user) return
     try {
-      const instanceId = agent?.instance_id || (instances.length > 0 ? instances[0].id : null)
-
-      if (!instanceId) {
-        toast.error('Nenhuma instância conectada. Conecte o WhatsApp primeiro.')
-        return
-      }
-
-      const data = { ...values, user_id: user.id, instance_id: instanceId }
+      const data = { ...values, user_id: user.id }
 
       if (agent) {
         await updateAiAgent(agent.id, data)
@@ -174,6 +173,7 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
         Object.entries(errors).forEach(([field, msg]) =>
           form.setError(field as any, { message: msg }),
         )
+        toast.error('Verifique os campos destacados no formulário.')
       } else {
         toast.error('Ocorreu um erro ao salvar o agente.')
       }
@@ -193,6 +193,30 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
         </SheetHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5 py-5">
+            <FormField
+              control={form.control}
+              name="instance_id"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Instância do WhatsApp</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione uma instância" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {instances.map((inst) => (
+                        <SelectItem key={inst.id} value={inst.id}>
+                          {inst.instance_name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
             <FormField
               control={form.control}
               name="name"
@@ -226,11 +250,7 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Provedor de IA</FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                      value={field.value}
-                    >
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Selecione um provedor" />
@@ -441,6 +461,7 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
                 disabled={form.formState.isSubmitting}
                 className="bg-violet-600 hover:bg-violet-700 text-white shadow-sm shadow-violet-600/20 h-9 px-4 text-[13px] font-medium"
               >
+                {form.formState.isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {form.formState.isSubmitting ? 'Salvando...' : 'Salvar Agente'}
               </Button>
             </div>

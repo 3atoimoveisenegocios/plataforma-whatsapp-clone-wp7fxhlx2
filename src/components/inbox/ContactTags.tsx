@@ -1,9 +1,11 @@
 import { useState, useCallback } from 'react'
-import { Tag, ChevronDown, ChevronUp } from 'lucide-react'
+import { Tag } from 'lucide-react'
 import { TagsInput } from '@/components/inbox/TagsInput'
 import { updateContactTags } from '@/services/whatsapp'
 import { useToast } from '@/hooks/use-toast'
 import { cn } from '@/lib/utils'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Button } from '@/components/ui/button'
 
 interface ContactTagsProps {
   contact: any
@@ -33,41 +35,26 @@ export function ContactTags({ contact, onUpdate }: ContactTagsProps) {
   )
 
   return (
-    <div className="border-t border-zinc-200/70 bg-zinc-50/40">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-5 py-2.5 text-left"
-      >
-        <div className="flex items-center gap-2">
-          <Tag className="h-3.5 w-3.5 text-zinc-400" />
-          <span className="text-[12.5px] font-medium text-zinc-700">Tags</span>
+    <Popover open={expanded} onOpenChange={setExpanded}>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-8 gap-1.5 px-2.5 shrink-0" title="Tags">
+          <Tag className="h-4 w-4 text-zinc-500" />
+          <span className="hidden sm:inline text-zinc-600 font-medium text-xs">Tags</span>
           {tags.length > 0 && (
-            <div className="flex gap-1">
-              {tags.slice(0, 3).map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center rounded-md bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 ring-1 ring-inset ring-violet-600/20"
-                >
-                  {tag}
-                </span>
-              ))}
-              {tags.length > 3 && (
-                <span className="text-[10px] text-zinc-400">+{tags.length - 3}</span>
-              )}
-            </div>
+            <span className="inline-flex items-center justify-center rounded-full bg-violet-100 px-1.5 py-0.5 text-[10px] font-bold text-violet-700">
+              {tags.length}
+            </span>
           )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-80 p-3" align="end">
+        <div className="space-y-3">
+          <h4 className="text-sm font-medium text-zinc-900">Tags do Contato</h4>
+          <div className={cn('transition-opacity', updating && 'opacity-50')}>
+            <TagsInput tags={tags} onChange={handleSave} />
+          </div>
         </div>
-        {expanded ? (
-          <ChevronUp className="h-4 w-4 text-zinc-400" />
-        ) : (
-          <ChevronDown className="h-4 w-4 text-zinc-400" />
-        )}
-      </button>
-      {expanded && (
-        <div className={cn('px-5 pb-3 transition-opacity', updating && 'opacity-50')}>
-          <TagsInput tags={tags} onChange={handleSave} />
-        </div>
-      )}
-    </div>
+      </PopoverContent>
+    </Popover>
   )
 }

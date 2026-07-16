@@ -75,19 +75,26 @@ onRecordAfterCreateSuccess(async (e) => {
       'No momento estamos fora do horario de atendimento. Retornaremos em breve!'
 
     const now = new Date()
+    // Brasilia Time is UTC-3 year-round (DST abolished in 2019).
+    // Compute directly instead of relying on toLocaleString which
+    // produces inconsistent results across JS runtimes.
     const utcMs = now.getTime()
     const localMs = utcMs - 3 * 60 * 60 * 1000
     const localDate = new Date(localMs)
-    const dayNames = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado']
-    const currentDay = dayNames[localDate.getUTCDay()]
 
+    // 0=Sunday, 1=Monday, ..., 6=Saturday
+    const currentDayNum = localDate.getUTCDay()
     const currentMinutes = localDate.getUTCHours() * 60 + localDate.getUTCMinutes()
     const startParts = startTime.split(':').map(Number)
     const endParts = endTime.split(':').map(Number)
-    const startMinutes = (startParts[0] || 9) * 60 + (startParts[1] || 0)
+    const startMinutes = (startParts[0] || 8) * 60 + (startParts[1] || 0)
     const endMinutes = (endParts[0] || 18) * 60 + (endParts[1] || 0)
 
-    const isOperatingDay = operatingDays.indexOf(currentDay) !== -1
+    // Support both numeric format [0,1,2,3,4,5,6] and string format ['domingo','segunda',...]
+    const dayNames = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado']
+    const currentDayName = dayNames[currentDayNum]
+    const isOperatingDay =
+      operatingDays.indexOf(currentDayNum) !== -1 || operatingDays.indexOf(currentDayName) !== -1
     const isWithinHours = currentMinutes >= startMinutes && currentMinutes <= endMinutes
 
     if (!isOperatingDay || !isWithinHours) {

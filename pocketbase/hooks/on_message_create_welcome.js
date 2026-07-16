@@ -9,7 +9,7 @@ onRecordAfterCreateSuccess((e) => {
   try {
     existingMessages = $app.findRecordsByFilter(
       'whatsapp_messages',
-      `contact_id='${contactId}'`,
+      `contact_id='${contactId}' && direction='in'`,
       '-created',
       2,
       0,

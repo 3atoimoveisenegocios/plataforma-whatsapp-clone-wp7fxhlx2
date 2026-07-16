@@ -51,14 +51,14 @@ export function ContactSelector({ selectedContact, onSelect }: ContactSelectorPr
           className="w-full justify-between h-10 text-[13.5px] font-medium border-zinc-200/70 hover:bg-zinc-50"
         >
           {selectedContact ? (
-            <span className="flex items-center gap-2 truncate">
+            <span className="flex items-center gap-2 min-w-0 overflow-hidden">
               <UserRound className="h-3.5 w-3.5 text-violet-500 shrink-0" />
-              <span className="truncate">
+              <span className="truncate min-w-0">
                 {selectedContact.name || selectedContact.phone || 'Contato'}
               </span>
             </span>
           ) : (
-            <span className="flex items-center gap-2 text-zinc-400">
+            <span className="flex items-center gap-2 text-zinc-400 shrink-0">
               <UserRound className="h-3.5 w-3.5 shrink-0" />
               Selecione o Contato
             </span>

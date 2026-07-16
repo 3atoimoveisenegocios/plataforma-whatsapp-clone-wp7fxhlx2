@@ -673,7 +673,7 @@ export default function Inbox() {
             </div>
           )}
           {(msg.caption || msg.body) && (
-            <p className="text-[15px] whitespace-pre-wrap">{msg.caption || msg.body}</p>
+            <p className="text-[15px] whitespace-pre-wrap break-words">{msg.caption || msg.body}</p>
           )}
         </div>
       )
@@ -726,13 +726,13 @@ export default function Inbox() {
             )}
           </div>
           {(msg.caption || msg.body) && (
-            <p className="text-[15px] whitespace-pre-wrap">{msg.caption || msg.body}</p>
+            <p className="text-[15px] whitespace-pre-wrap break-words">{msg.caption || msg.body}</p>
           )}
         </div>
       )
     }
 
-    return <p className="whitespace-pre-wrap text-[15px] leading-relaxed">{msg.body}</p>
+    return <p className="whitespace-pre-wrap break-words text-[15px] leading-relaxed">{msg.body}</p>
   }
 
   return (
@@ -989,24 +989,25 @@ export default function Inbox() {
         ) : (
           <>
             {/* Chat Header */}
-            <div className="flex items-center gap-3 px-5 py-3.5 border-b border-zinc-200/70 bg-white/80 backdrop-blur-sm shrink-0 z-10">
+            <div className="flex items-center gap-2 md:gap-3 px-3 md:px-5 py-3.5 border-b border-zinc-200/70 bg-white/80 backdrop-blur-sm shrink-0 z-10">
               <Button
                 variant="ghost"
                 size="icon"
-                className="md:hidden -ml-1 h-9 w-9 text-zinc-600 hover:text-zinc-900"
+                className="md:hidden -ml-1 h-9 w-9 text-zinc-600 hover:text-zinc-900 shrink-0"
                 onClick={() => setSelectedContact(null)}
+                title="Voltar"
               >
-                <AlertCircle className="h-5 w-5 rotate-90" />
+                <AlertCircle className="h-5 w-5 rotate-90 shrink-0" />
               </Button>
-              <Avatar className="h-10 w-10 ring-2 ring-zinc-100">
+              <Avatar className="h-10 w-10 ring-2 ring-zinc-100 shrink-0">
                 <AvatarFallback className="bg-gradient-to-br from-violet-100 to-violet-200 text-violet-700 text-[13px] font-semibold">
                   {selectedContact.name?.substring(0, 2).toUpperCase() ||
                     selectedContact.phone?.substring(0, 2)}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <h3 className="text-[15px] font-semibold tracking-tight text-zinc-900 truncate">
+                <div className="flex items-center gap-2 min-w-0">
+                  <h3 className="text-[15px] font-semibold tracking-tight text-zinc-900 truncate min-w-0">
                     {selectedContact.name || selectedContact.phone}
                   </h3>
                   {selectedContact.agent_paused && (
@@ -1033,7 +1034,7 @@ export default function Inbox() {
                 size="sm"
                 onClick={handleToggleAgent}
                 className={cn(
-                  'ml-auto h-8 text-xs font-medium transition-colors shrink-0 px-2.5',
+                  'h-8 text-xs font-medium transition-colors shrink-0 px-2.5',
                   selectedContact.agent_paused
                     ? 'text-violet-600 hover:bg-violet-50 hover:text-violet-700'
                     : 'text-zinc-500 hover:text-amber-600 hover:bg-amber-50',
@@ -1274,7 +1275,7 @@ export default function Inbox() {
                               : 'Digite uma mensagem...'
                             : 'WhatsApp desconectado.'
                         }
-                        className="min-h-[44px] max-h-32 bg-zinc-50/80 border-zinc-200/70 resize-none py-3 text-[14px] placeholder:text-zinc-400 focus-visible:ring-violet-500/30 focus-visible:ring-offset-0 focus-visible:border-violet-300 rounded-2xl"
+                        className="flex-1 w-full min-h-[44px] max-h-32 bg-zinc-50/80 border-zinc-200/70 resize-none py-3 text-[14px] placeholder:text-zinc-400 focus-visible:ring-violet-500/30 focus-visible:ring-offset-0 focus-visible:border-violet-300 rounded-2xl"
                         rows={1}
                         disabled={instance?.status !== 'connected'}
                       />
