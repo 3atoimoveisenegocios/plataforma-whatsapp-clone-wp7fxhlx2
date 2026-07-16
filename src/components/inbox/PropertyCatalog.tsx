@@ -3,7 +3,12 @@ import { toast } from 'sonner'
 import { getProperties, refreshProperties, type Property } from '@/services/properties'
 import { useRealtime } from '@/hooks/use-realtime'
 import { clearPropertiesCache } from '@/services/properties'
-import { formatPropertyMessage, getPropertyImageUrl, getPropertyUrl } from '@/lib/property-message'
+import {
+  formatPropertyMessage,
+  getPropertyImageUrl,
+  getPropertyUrl,
+  getYouTubeVideoId,
+} from '@/lib/property-message'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
@@ -477,17 +482,46 @@ export function PropertyCatalog({
                         </a>
                       ) : null
                     })()}
-                    {property.youtube_link && (
-                      <a
-                        href={property.youtube_link}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full h-8 flex items-center justify-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 border border-red-200 rounded-md hover:bg-red-50 transition-colors"
-                      >
-                        <Youtube className="h-3.5 w-3.5" />
-                        ASSISTIR VÍDEO
-                      </a>
-                    )}
+                    {property.youtube_link &&
+                      (() => {
+                        const videoId = getYouTubeVideoId(property.youtube_link)
+                        if (videoId) {
+                          return (
+                            <a
+                              href={property.youtube_link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="relative block w-full h-32 rounded-lg overflow-hidden ring-1 ring-red-200 group/youtube"
+                            >
+                              <img
+                                src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`}
+                                alt="YouTube preview"
+                                className="w-full h-full object-cover"
+                                loading="lazy"
+                              />
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover/youtube:bg-black/40 transition-colors">
+                                <div className="h-10 w-10 rounded-full bg-red-600 flex items-center justify-center group-hover/youtube:scale-110 transition-transform">
+                                  <Youtube className="h-5 w-5 text-white" />
+                                </div>
+                              </div>
+                              <span className="absolute bottom-2 left-2 text-xs font-medium text-white bg-black/60 px-2 py-0.5 rounded">
+                                Assistir Vídeo
+                              </span>
+                            </a>
+                          )
+                        }
+                        return (
+                          <a
+                            href={property.youtube_link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full h-8 flex items-center justify-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 border border-red-200 rounded-md hover:bg-red-50 transition-colors"
+                          >
+                            <Youtube className="h-3.5 w-3.5" />
+                            ASSISTIR VÍDEO
+                          </a>
+                        )
+                      })()}
                   </div>
                 </div>
               )

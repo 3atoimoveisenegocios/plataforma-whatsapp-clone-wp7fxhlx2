@@ -113,6 +113,8 @@ routerAdd(
             images: imageUrls,
             cover_image: coverImageUrl,
             external_link: record.getString('external_link') || '',
+            youtube_link: record.getString('youtube_link') || '',
+            slug: record.getString('slug') || '',
             source: 'local',
           })
         }
@@ -311,6 +313,8 @@ routerAdd(
           images: photoUrls,
           cover_image: extCoverImage,
           external_link: item.external_link || item.link || item.url || '',
+          youtube_link: item.youtube_link || '',
+          slug: item.slug || '',
           price_sale: extPriceSale,
           price_rent: extPriceRent,
           sale_price: extPriceSale,
