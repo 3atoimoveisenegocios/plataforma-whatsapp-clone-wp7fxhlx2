@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-16T16:08:00.466Z",
+  "generatedAt": "2026-07-16T17:08:24.449Z",
   "collections": [
     {
       "name": "users",
@@ -371,6 +371,36 @@
           "name": "api_key",
           "type": "text",
           "required": true,
+          "system": false
+        },
+        {
+          "name": "business_hours_enabled",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "operating_days",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "start_time",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "end_time",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "out_of_hours_message",
+          "type": "text",
+          "required": false,
           "system": false
         }
       ],

@@ -59,7 +59,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PropertyCatalog } from '@/components/inbox/PropertyCatalog'
 import type { Property } from '@/services/properties'
-import { getPropertyImageUrl } from '@/lib/property-message'
+import { getPropertyImageUrl, getPropertyImageUrls } from '@/lib/property-message'
 
 export default function Inbox() {
   const [contacts, setContacts] = useState<any[]>([])
@@ -577,6 +577,103 @@ export default function Inbox() {
     }
   }
 
+  const handleSendAllPhotos = async (property: Property) => {
+    if (!selectedContact) {
+      toast({ variant: 'destructive', title: 'Selecione uma conversa primeiro' })
+      return
+    }
+
+    const imageUrls = getPropertyImageUrls(property)
+    if (imageUrls.length === 0) {
+      toast({ variant: 'destructive', title: 'Este imóvel não possui fotos' })
+      return
+    }
+
+    toast({ title: `Enviando ${imageUrls.length} fotos...` })
+
+    for (let i = 0; i < imageUrls.length; i++) {
+      const imageUrl = imageUrls[i]
+      const tempId = `temp_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`
+      const nowIso = new Date().toISOString()
+
+      const optimisticMsg = {
+        id: tempId,
+        body: '',
+        direction: 'out',
+        type: 'image',
+        sent_at: nowIso,
+        created: nowIso,
+        contact_id: selectedContact.id,
+        status: 'sending',
+        localUrl: imageUrl,
+        file_name: `property-image-${i + 1}.jpg`,
+        mime_type: 'image/jpeg',
+      }
+
+      setMessages((prev) => sortMessagesList([...prev, optimisticMsg]))
+
+      try {
+        const response = await fetch(imageUrl)
+        const blob = await response.blob()
+        const file = new File([blob], `property-image-${i + 1}.jpg`, {
+          type: blob.type || 'image/jpeg',
+        })
+        const base64 = await new Promise<string>((resolve) => {
+          const reader = new FileReader()
+          reader.onload = () => {
+            const result = reader.result as string
+            resolve(result.split(',')[1])
+          }
+          reader.readAsDataURL(file)
+        })
+
+        const res = await sendMessage(selectedContact.id, {
+          text: '',
+          file,
+          type: 'image',
+          base64,
+          instance_id: selectedContact.instance_id,
+          remote_jid: selectedContact.remote_jid,
+        })
+
+        const createdMsg = res?.message || res
+        if (createdMsg && createdMsg.id) {
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === createdMsg.id)) {
+              return prev.filter((m) => m.id !== tempId)
+            }
+            return sortMessagesList(prev.map((m) => (m.id === tempId ? createdMsg : m)))
+          })
+        } else {
+          setMessages((prev) =>
+            sortMessagesList(prev.map((m) => (m.id === tempId ? { ...m, status: 'sent' } : m))),
+          )
+        }
+      } catch (error) {
+        console.error(error)
+        setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m)))
+      }
+
+      if (i < imageUrls.length - 1) {
+        await new Promise((r) => setTimeout(r, 1500))
+      }
+    }
+
+    setContacts((prev) => {
+      const updated = prev.map((c) =>
+        c.id === selectedContact.id
+          ? { ...c, last_message: '📷 Fotos enviadas', last_message_at: new Date().toISOString() }
+          : c,
+      )
+      return updated.sort(
+        (a, b) =>
+          new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime(),
+      )
+    })
+
+    toast({ title: `${imageUrls.length} fotos enviadas com sucesso!` })
+  }
+
   const handleDisconnect = async () => {
     try {
       await logoutInstance()
@@ -918,7 +1015,7 @@ export default function Inbox() {
                                   e.stopPropagation()
                                   setContactToDelete(contact)
                                 }}
-                                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity h-7 w-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 shrink-0"
+                                className="h-7 w-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 shrink-0"
                                 title="Excluir conversa"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />
@@ -936,6 +1033,7 @@ export default function Inbox() {
         ) : (
           <PropertyCatalog
             onSendProperty={handleSendProperty}
+            onSendAllPhotos={handleSendAllPhotos}
             hasSelectedContact={!!selectedContact}
           />
         )}

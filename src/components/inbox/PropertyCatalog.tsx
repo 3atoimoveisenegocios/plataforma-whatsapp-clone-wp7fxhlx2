@@ -47,6 +47,7 @@ const PAGE_SIZE = 24
 
 interface PropertyCatalogProps {
   onSendProperty: (property: Property, message: string, contactId?: string) => void
+  onSendAllPhotos?: (property: Property) => Promise<void>
   hasSelectedContact?: boolean
 }
 
@@ -65,6 +66,7 @@ function handleImageError(e: SyntheticEvent<HTMLImageElement>) {
 
 export function PropertyCatalog({
   onSendProperty,
+  onSendAllPhotos,
   hasSelectedContact = false,
 }: PropertyCatalogProps) {
   const [properties, setProperties] = useState<Property[]>([])
@@ -72,6 +74,7 @@ export function PropertyCatalog({
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [sendingId, setSendingId] = useState<string | null>(null)
+  const [sendingPhotosId, setSendingPhotosId] = useState<string | null>(null)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [selectedContact, setSelectedContact] = useState<any | null>(null)
 
@@ -174,6 +177,63 @@ export function PropertyCatalog({
     } else {
       onSendProperty(property, message)
       setTimeout(() => setSendingId(null), 2000)
+    }
+  }
+
+  const handleSendAllPhotos = async (property: Property) => {
+    if (!selectedContact && !hasSelectedContact) {
+      toast.error('Selecione um contato antes de enviar.')
+      return
+    }
+
+    const imageUrls = getPropertyImageUrls(property)
+    if (imageUrls.length === 0) {
+      toast.error('Este imóvel não possui fotos.')
+      return
+    }
+
+    setSendingPhotosId(property.id)
+
+    try {
+      if (selectedContact) {
+        for (let i = 0; i < imageUrls.length; i++) {
+          try {
+            const response = await fetch(imageUrls[i])
+            const blob = await response.blob()
+            const file = new File([blob], `property-image-${i + 1}.jpg`, {
+              type: blob.type || 'image/jpeg',
+            })
+            const base64 = await new Promise<string>((resolve) => {
+              const reader = new FileReader()
+              reader.onload = () => {
+                const result = reader.result as string
+                resolve(result.split(',')[1])
+              }
+              reader.readAsDataURL(file)
+            })
+
+            await sendMessage(selectedContact.id, {
+              text: '',
+              file,
+              type: 'image',
+              base64,
+              instance_id: selectedContact.instance_id,
+              remote_jid: selectedContact.remote_jid,
+            })
+
+            if (i < imageUrls.length - 1) {
+              await new Promise((r) => setTimeout(r, 1500))
+            }
+          } catch (err) {
+            console.error('Failed to send image', err)
+          }
+        }
+        toast.success(`${imageUrls.length} fotos enviadas com sucesso!`)
+      } else if (onSendAllPhotos) {
+        await onSendAllPhotos(property)
+      }
+    } finally {
+      setTimeout(() => setSendingPhotosId(null), 2000)
     }
   }
 
@@ -452,59 +512,83 @@ export function PropertyCatalog({
                       <Send className="h-3.5 w-3.5 mr-1.5" />
                       {sendingId === property.id ? 'Enviando...' : 'Enviar no chat'}
                     </Button>
-                    {(() => {
-                      const url = getPropertyUrl(property)
-                      return url ? (
-                        <a
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-full h-8 flex items-center justify-center text-xs font-medium text-violet-600 hover:text-violet-700 border border-violet-200 rounded-md hover:bg-violet-50 transition-colors"
-                        >
-                          LINK DO IMÓVEL
-                        </a>
-                      ) : null
-                    })()}
-                    {property.youtube_link &&
-                      (() => {
-                        const videoId = getYouTubeVideoId(property.youtube_link)
-                        if (videoId) {
+                    <div className="space-y-2 pt-3">
+                      {(() => {
+                        const url = getPropertyUrl(property)
+                        return url ? (
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="w-full h-8 flex items-center justify-center text-xs font-medium text-violet-600 hover:text-violet-700 border border-violet-200 rounded-md hover:bg-violet-50 transition-colors"
+                          >
+                            LINK DO IMÓVEL
+                          </a>
+                        ) : null
+                      })()}
+                      <Button
+                        size="sm"
+                        className="w-full h-8 text-xs font-medium bg-emerald-600 hover:bg-emerald-700"
+                        onClick={() => handleSendAllPhotos(property)}
+                        disabled={
+                          (!hasSelectedContact && !selectedContact) ||
+                          sendingPhotosId === property.id ||
+                          getPropertyImageUrls(property).length === 0
+                        }
+                      >
+                        {sendingPhotosId === property.id ? (
+                          <>
+                            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                            Enviando fotos...
+                          </>
+                        ) : (
+                          <>
+                            <ImagePlus className="h-3.5 w-3.5 mr-1.5" />
+                            Enviar Fotos ({getPropertyImageUrls(property).length})
+                          </>
+                        )}
+                      </Button>
+                      {property.youtube_link &&
+                        (() => {
+                          const videoId = getYouTubeVideoId(property.youtube_link)
+                          if (videoId) {
+                            return (
+                              <a
+                                href={property.youtube_link}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="relative block w-full h-32 rounded-lg overflow-hidden ring-1 ring-red-200 group/youtube"
+                              >
+                                <img
+                                  src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`}
+                                  alt="YouTube preview"
+                                  className="w-full h-full object-cover"
+                                  loading="lazy"
+                                />
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover/youtube:bg-black/40 transition-colors">
+                                  <div className="h-10 w-10 rounded-full bg-red-600 flex items-center justify-center group-hover/youtube:scale-110 transition-transform">
+                                    <Youtube className="h-5 w-5 text-white" />
+                                  </div>
+                                </div>
+                                <span className="absolute bottom-2 left-2 text-xs font-medium text-white bg-black/60 px-2 py-0.5 rounded">
+                                  Assistir Vídeo
+                                </span>
+                              </a>
+                            )
+                          }
                           return (
                             <a
                               href={property.youtube_link}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="relative block w-full h-32 rounded-lg overflow-hidden ring-1 ring-red-200 group/youtube"
+                              className="w-full h-8 flex items-center justify-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 border border-red-200 rounded-md hover:bg-red-50 transition-colors"
                             >
-                              <img
-                                src={`https://img.youtube.com/vi/${videoId}/hqdefault.jpg`}
-                                alt="YouTube preview"
-                                className="w-full h-full object-cover"
-                                loading="lazy"
-                              />
-                              <div className="absolute inset-0 flex items-center justify-center bg-black/30 group-hover/youtube:bg-black/40 transition-colors">
-                                <div className="h-10 w-10 rounded-full bg-red-600 flex items-center justify-center group-hover/youtube:scale-110 transition-transform">
-                                  <Youtube className="h-5 w-5 text-white" />
-                                </div>
-                              </div>
-                              <span className="absolute bottom-2 left-2 text-xs font-medium text-white bg-black/60 px-2 py-0.5 rounded">
-                                Assistir Vídeo
-                              </span>
+                              <Youtube className="h-3.5 w-3.5" />
+                              ASSISTIR VÍDEO
                             </a>
                           )
-                        }
-                        return (
-                          <a
-                            href={property.youtube_link}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="w-full h-8 flex items-center justify-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 border border-red-200 rounded-md hover:bg-red-50 transition-colors"
-                          >
-                            <Youtube className="h-3.5 w-3.5" />
-                            ASSISTIR VÍDEO
-                          </a>
-                        )
-                      })()}
+                        })()}
+                    </div>
                   </div>
                 </div>
               )

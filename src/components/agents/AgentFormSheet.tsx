@@ -25,6 +25,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Switch } from '@/components/ui/switch'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Select,
   SelectContent,
@@ -34,6 +35,16 @@ import {
 } from '@/components/ui/select'
 import { Button } from '@/components/ui/button'
 
+const DAYS_OF_WEEK = [
+  { value: 'domingo', label: 'Domingo' },
+  { value: 'segunda', label: 'Segunda' },
+  { value: 'terca', label: 'Terça' },
+  { value: 'quarta', label: 'Quarta' },
+  { value: 'quinta', label: 'Quinta' },
+  { value: 'sexta', label: 'Sexta' },
+  { value: 'sabado', label: 'Sábado' },
+]
+
 const formSchema = z.object({
   name: z.string().min(1, 'Nome é obrigatório'),
   description: z.string().optional(),
@@ -41,6 +52,11 @@ const formSchema = z.object({
   api_key: z.string().min(1, 'Chave da API é obrigatória'),
   system_prompt: z.string().min(1, 'Prompt do sistema é obrigatório'),
   active: z.boolean().default(true),
+  business_hours_enabled: z.boolean().default(false),
+  operating_days: z.array(z.string()).default([]),
+  start_time: z.string().default('09:00'),
+  end_time: z.string().default('18:00'),
+  out_of_hours_message: z.string().default(''),
 })
 
 type AgentFormValues = z.infer<typeof formSchema>
@@ -64,6 +80,11 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
       api_key: '',
       system_prompt: '',
       active: true,
+      business_hours_enabled: false,
+      operating_days: [],
+      start_time: '09:00',
+      end_time: '18:00',
+      out_of_hours_message: '',
     },
   })
 
@@ -88,6 +109,11 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
         api_key: agent.api_key || '',
         system_prompt: agent.system_prompt,
         active: agent.active,
+        business_hours_enabled: agent.business_hours_enabled || false,
+        operating_days: agent.operating_days || [],
+        start_time: agent.start_time || '09:00',
+        end_time: agent.end_time || '18:00',
+        out_of_hours_message: agent.out_of_hours_message || '',
       })
     } else {
       form.reset({
@@ -97,9 +123,22 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
         api_key: '',
         system_prompt: '',
         active: true,
+        business_hours_enabled: false,
+        operating_days: [],
+        start_time: '09:00',
+        end_time: '18:00',
+        out_of_hours_message: '',
       })
     }
   }, [agent, form, open])
+
+  const toggleDay = (day: string) => {
+    const current = form.getValues('operating_days') || []
+    const updated = current.includes(day)
+      ? current.filter((d: string) => d !== day)
+      : [...current, day]
+    form.setValue('operating_days', updated)
+  }
 
   const onSubmit = async (values: AgentFormValues) => {
     if (!user) return
@@ -252,6 +291,100 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
                 </FormItem>
               )}
             />
+            <FormField
+              control={form.control}
+              name="business_hours_enabled"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-xl bg-zinc-50/60 ring-1 ring-zinc-200/70 p-4">
+                  <div className="space-y-0.5">
+                    <FormLabel className="text-[14px] font-medium text-zinc-900">
+                      Horário de Funcionamento
+                    </FormLabel>
+                    <p className="text-[12.5px] text-zinc-500">
+                      Responde com mensagem automática fora do horário.
+                    </p>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      className="data-[state=checked]:bg-violet-600"
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            {form.watch('business_hours_enabled') && (
+              <div className="space-y-4 rounded-xl bg-zinc-50/60 ring-1 ring-zinc-200/70 p-4">
+                <div>
+                  <FormLabel className="text-[14px] font-medium text-zinc-900 mb-3 block">
+                    Dias de Atendimento
+                  </FormLabel>
+                  <div className="grid grid-cols-2 gap-2">
+                    {DAYS_OF_WEEK.map((day) => {
+                      const checked = (form.watch('operating_days') || []).includes(day.value)
+                      return (
+                        <label
+                          key={day.value}
+                          className="flex items-center gap-2 cursor-pointer text-[13px] text-zinc-700"
+                        >
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={() => toggleDay(day.value)}
+                          />
+                          {day.label}
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="start_time"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Início</FormLabel>
+                        <FormControl>
+                          <Input type="time" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="end_time"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Fim</FormLabel>
+                        <FormControl>
+                          <Input type="time" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <FormField
+                  control={form.control}
+                  name="out_of_hours_message"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Mensagem fora do horário</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Olá! No momento estamos fora do horário de atendimento..."
+                          className="min-h-[80px]"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            )}
             <div className="flex justify-end pt-4">
               <Button
                 type="submit"

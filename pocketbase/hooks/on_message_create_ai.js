@@ -59,6 +59,88 @@ onRecordAfterCreateSuccess(async (e) => {
     return e.next()
   }
 
+  // ===== BUSINESS HOURS CHECK =====
+  const businessHoursEnabled = agent.getBool('business_hours_enabled')
+  if (businessHoursEnabled) {
+    let operatingDays = []
+    try {
+      const raw = agent.getString('operating_days')
+      if (raw) operatingDays = JSON.parse(raw)
+    } catch (_) {}
+
+    const startTime = agent.getString('start_time') || '09:00'
+    const endTime = agent.getString('end_time') || '18:00'
+    const outOfHoursMessage =
+      agent.getString('out_of_hours_message') ||
+      'No momento estamos fora do horario de atendimento. Retornaremos em breve!'
+
+    const now = new Date()
+    const dayNames = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado']
+    const currentDay = dayNames[now.getDay()]
+
+    const currentMinutes = now.getHours() * 60 + now.getMinutes()
+    const startParts = startTime.split(':').map(Number)
+    const endParts = endTime.split(':').map(Number)
+    const startMinutes = (startParts[0] || 9) * 60 + (startParts[1] || 0)
+    const endMinutes = (endParts[0] || 18) * 60 + (endParts[1] || 0)
+
+    const isOperatingDay = operatingDays.indexOf(currentDay) !== -1
+    const isWithinHours = currentMinutes >= startMinutes && currentMinutes <= endMinutes
+
+    if (!isOperatingDay || !isWithinHours) {
+      const instance = $app.findRecordById('whatsapp_instances', agent.getString('instance_id'))
+      const instanceName = instance.getString('instance_name')
+
+      const evoUrl = $secrets.get('EVOLUTION_API_URL')
+      const evoKey = $secrets.get('EVOLUTION_API_KEY')
+
+      if (evoUrl && evoKey) {
+        let evoUrlSanitized = evoUrl.endsWith('/') ? evoUrl.slice(0, -1) : evoUrl
+
+        const res = $http.send({
+          url: evoUrlSanitized + '/message/sendText/' + instanceName,
+          method: 'POST',
+          headers: { apikey: evoKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            number: contact.getString('remote_jid'),
+            text: outOfHoursMessage,
+            delay: 0,
+          }),
+          timeout: 15,
+        })
+
+        if (res.statusCode === 200 || res.statusCode === 201) {
+          let messageId = 'msg_' + $security.randomString(10)
+          if (res.json && res.json.key && res.json.key.id) messageId = res.json.key.id
+          else if (res.json && res.json.messageId) messageId = res.json.messageId
+
+          const msgsCol = $app.findCollectionByNameOrId('whatsapp_messages')
+          const msgRecord = new Record(msgsCol)
+          msgRecord.set('user_id', contact.getString('user_id'))
+          msgRecord.set('instance_id', instance.id)
+          msgRecord.set('contact_id', contact.id)
+          msgRecord.set('remote_jid', contact.getString('remote_jid'))
+          msgRecord.set('message_id', messageId)
+          msgRecord.set('direction', 'out')
+          msgRecord.set('body', outOfHoursMessage)
+          msgRecord.set('type', 'text')
+          msgRecord.set('sent_at', new Date().toISOString())
+          $app.saveNoValidate(msgRecord)
+
+          contact.set('last_message', outOfHoursMessage)
+          contact.set('last_message_at', new Date().toISOString())
+          contact.set('status', 'aguardando')
+          $app.saveNoValidate(contact)
+        } else {
+          $app.logger().error('Evolution send failed (out of hours)', 'status', res.statusCode)
+        }
+      }
+
+      return e.next()
+    }
+  }
+  // ===== END BUSINESS HOURS CHECK =====
+
   try {
     const sysPrompt =
       agent.getString('system_prompt') +
