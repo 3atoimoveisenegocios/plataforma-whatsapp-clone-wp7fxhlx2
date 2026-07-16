@@ -37,6 +37,31 @@ export function getPropertyImageUrl(property: Property): string | null {
   return null
 }
 
+export function getPropertyImageUrls(property: Property): string[] {
+  const baseUrl = import.meta.env.VITE_POCKETBASE_URL
+  const urls: string[] = []
+
+  if (property.images && property.images.length > 0) {
+    for (const img of property.images) {
+      if (img.startsWith('http')) {
+        urls.push(img)
+      } else {
+        urls.push(`${baseUrl}/api/files/properties/${property.id}/${img}`)
+      }
+    }
+  }
+
+  if (urls.length === 0 && property.cover_image) {
+    if (property.cover_image.startsWith('http')) {
+      urls.push(property.cover_image)
+    } else {
+      urls.push(`${baseUrl}/api/files/properties/${property.id}/${property.cover_image}`)
+    }
+  }
+
+  return urls
+}
+
 export function formatPropertyMessage(property: Property): string {
   const lines: string[] = []
 
@@ -103,11 +128,13 @@ export function formatPropertyMessage(property: Property): string {
 
   const propertyUrl = getPropertyUrl(property)
   if (propertyUrl) {
+    lines.push('')
     lines.push('LINK DO IMÓVEL')
     lines.push(propertyUrl)
   }
 
   if (property.youtube_link) {
+    lines.push('')
     lines.push(`VÍDEO: ${property.youtube_link}`)
   }
 

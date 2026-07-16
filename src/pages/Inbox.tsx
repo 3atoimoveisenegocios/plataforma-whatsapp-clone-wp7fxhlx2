@@ -918,7 +918,7 @@ export default function Inbox() {
                                   e.stopPropagation()
                                   setContactToDelete(contact)
                                 }}
-                                className="opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 shrink-0"
+                                className="opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity h-7 w-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 shrink-0"
                                 title="Excluir conversa"
                               >
                                 <Trash2 className="h-3.5 w-3.5" />

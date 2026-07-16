@@ -6,6 +6,7 @@ import { clearPropertiesCache } from '@/services/properties'
 import {
   formatPropertyMessage,
   getPropertyImageUrl,
+  getPropertyImageUrls,
   getPropertyUrl,
   getYouTubeVideoId,
 } from '@/lib/property-message'
@@ -58,26 +59,8 @@ const formatPrice = (value: number | null | undefined): string | null => {
   })
 }
 
-function getEffectiveImages(property: Property): string[] {
-  if (property.images.length > 0) return property.images
-  if (property.cover_image) return [property.cover_image]
-  return []
-}
-
-function handleImageError(
-  e: SyntheticEvent<HTMLImageElement>,
-  property: Property,
-  effectiveImages: string[],
-) {
-  const target = e.currentTarget
-  const coverInList = property.cover_image && effectiveImages.includes(property.cover_image)
-
-  if (property.cover_image && !coverInList && target.dataset.triedCover !== 'true') {
-    target.src = property.cover_image
-    target.dataset.triedCover = 'true'
-  } else {
-    target.src = PLACEHOLDER_IMAGE
-  }
+function handleImageError(e: SyntheticEvent<HTMLImageElement>) {
+  e.currentTarget.src = PLACEHOLDER_IMAGE
 }
 
 export function PropertyCatalog({
@@ -304,7 +287,7 @@ export function PropertyCatalog({
         ) : (
           <div className="p-3 space-y-3">
             {visibleProperties.map((property) => {
-              const effectiveImages = getEffectiveImages(property)
+              const effectiveImages = getPropertyImageUrls(property)
               const hasImages = effectiveImages.length > 0
               return (
                 <div
@@ -322,7 +305,7 @@ export function PropertyCatalog({
                                 alt={`${property.name} - Foto ${idx + 1}`}
                                 className="w-full h-full object-cover"
                                 loading="lazy"
-                                onError={(e) => handleImageError(e, property, effectiveImages)}
+                                onError={(e) => handleImageError(e)}
                               />
                             </div>
                           </CarouselItem>
