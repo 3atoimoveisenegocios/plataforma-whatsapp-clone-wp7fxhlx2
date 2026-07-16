@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { getProperties, refreshProperties, type Property } from '@/services/properties'
 import { useRealtime } from '@/hooks/use-realtime'
 import { clearPropertiesCache } from '@/services/properties'
-import { formatPropertyMessage } from '@/lib/property-message'
+import { formatPropertyMessage, getPropertyImageUrl } from '@/lib/property-message'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
@@ -143,9 +143,36 @@ export function PropertyCatalog({
     setSendingId(property.id)
     const message = formatPropertyMessage(property)
     if (selectedContact) {
+      const imageUrl = getPropertyImageUrl(property)
+      let file: File | undefined
+      let base64: string | undefined
+
+      if (imageUrl) {
+        try {
+          const response = await fetch(imageUrl)
+          const blob = await response.blob()
+          file = new File([blob], 'property-image.jpg', {
+            type: blob.type || 'image/jpeg',
+          })
+          base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.onload = () => {
+              const result = reader.result as string
+              resolve(result.split(',')[1])
+            }
+            reader.readAsDataURL(file!)
+          })
+        } catch (e) {
+          console.error('Failed to fetch property image', e)
+        }
+      }
+
       try {
         await sendMessage(selectedContact.id, {
           text: message,
+          file,
+          type: file ? 'image' : 'text',
+          base64,
           instance_id: selectedContact.instance_id,
           remote_jid: selectedContact.remote_jid,
         })
@@ -320,42 +347,6 @@ export function PropertyCatalog({
                       {property.name}
                     </h3>
 
-                    {(() => {
-                      const priceSale = property.price_sale ?? property.sale_price
-                      const priceRent = property.price_rent ?? property.rent_price
-                      if (!priceSale && !priceRent) return null
-                      return (
-                        <div className="flex flex-wrap gap-x-3 gap-y-1">
-                          {priceSale ? (
-                            <div>
-                              <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
-                                Venda
-                              </span>
-                              <p className="text-sm font-bold text-emerald-600">
-                                {formatPrice(priceSale)}
-                              </p>
-                            </div>
-                          ) : null}
-                          {priceRent ? (
-                            <div>
-                              <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
-                                Locação
-                              </span>
-                              <p className="text-sm font-bold text-violet-600">
-                                {formatPrice(priceRent)}
-                              </p>
-                            </div>
-                          ) : null}
-                        </div>
-                      )
-                    })()}
-
-                    {property.description && (
-                      <p className="text-xs text-zinc-600 line-clamp-3 leading-relaxed">
-                        {property.description}
-                      </p>
-                    )}
-
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 py-1">
                       {property.bedrooms > 0 && (
                         <span
@@ -431,6 +422,36 @@ export function PropertyCatalog({
                       )}
                     </div>
 
+                    {(() => {
+                      const priceSale = property.price_sale ?? property.sale_price
+                      const priceRent = property.price_rent ?? property.rent_price
+                      if (!priceSale && !priceRent) return null
+                      return (
+                        <div className="flex flex-wrap gap-x-3 gap-y-1">
+                          {priceRent ? (
+                            <div>
+                              <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
+                                Locação
+                              </span>
+                              <p className="text-sm font-bold text-violet-600">
+                                {formatPrice(priceRent)}
+                              </p>
+                            </div>
+                          ) : null}
+                          {priceSale ? (
+                            <div>
+                              <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
+                                Venda
+                              </span>
+                              <p className="text-sm font-bold text-emerald-600">
+                                {formatPrice(priceSale)}
+                              </p>
+                            </div>
+                          ) : null}
+                        </div>
+                      )
+                    })()}
+
                     <Button
                       size="sm"
                       className="w-full h-8 text-xs font-medium bg-violet-600 hover:bg-violet-700"
@@ -442,6 +463,16 @@ export function PropertyCatalog({
                       <Send className="h-3.5 w-3.5 mr-1.5" />
                       {sendingId === property.id ? 'Enviando...' : 'Enviar no chat'}
                     </Button>
+                    {property.external_link && (
+                      <a
+                        href={property.external_link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full h-8 flex items-center justify-center text-xs font-medium text-violet-600 hover:text-violet-700 border border-violet-200 rounded-md hover:bg-violet-50 transition-colors"
+                      >
+                        LINK DO IMÓVEL
+                      </a>
+                    )}
                   </div>
                 </div>
               )

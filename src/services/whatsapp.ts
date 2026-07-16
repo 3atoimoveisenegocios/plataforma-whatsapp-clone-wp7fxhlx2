@@ -58,3 +58,11 @@ export const sendMessage = (
 }
 
 export const logoutInstance = () => pb.send(`/backend/v1/instance/logout`, { method: 'POST' })
+
+export const deleteContact = async (contactId: string) => {
+  const messages = await pb
+    .collection('whatsapp_messages')
+    .getFullList({ filter: `contact_id = '${contactId}'` })
+  await Promise.all(messages.map((m) => pb.collection('whatsapp_messages').delete(m.id)))
+  await pb.collection('whatsapp_contacts').delete(contactId)
+}

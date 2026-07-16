@@ -7,7 +7,9 @@ import {
   getInstances,
   logoutInstance,
   toggleContactAgent,
+  deleteContact,
 } from '@/services/whatsapp'
+import { playNotificationSound } from '@/lib/notification-sound'
 import { useRealtime } from '@/hooks/use-realtime'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
@@ -70,6 +72,8 @@ export default function Inbox() {
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [instance, setInstance] = useState<any>(null)
   const [activeTab, setActiveTab] = useState('conversas')
+  const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
+  const [contactToDelete, setContactToDelete] = useState<any | null>(null)
 
   // File states
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -200,6 +204,13 @@ export default function Inbox() {
       } else if (e.action === 'delete') {
         setMessages((prev) => prev.filter((m) => m.id !== e.record.id))
       }
+    } else if (e.action === 'create' && e.record.direction === 'in') {
+      const contactId = e.record.contact_id
+      setUnreadCounts((prev) => ({
+        ...prev,
+        [contactId]: (prev[contactId] || 0) + 1,
+      }))
+      playNotificationSound()
     }
   })
 
@@ -448,6 +459,26 @@ export default function Inbox() {
         prev.map((c) => (c.id === selectedContact.id ? { ...c, agent_paused: !newStatus } : c)),
       )
       toast({ variant: 'destructive', title: 'Erro ao atualizar status da IA' })
+    }
+  }
+
+  const handleDeleteContact = async () => {
+    if (!contactToDelete) return
+    try {
+      await deleteContact(contactToDelete.id)
+      if (selectedContact?.id === contactToDelete.id) {
+        setSelectedContact(null)
+      }
+      setUnreadCounts((prev) => {
+        const next = { ...prev }
+        delete next[contactToDelete.id]
+        return next
+      })
+      toast({ title: 'Conversa excluída com sucesso' })
+    } catch (e) {
+      toast({ variant: 'destructive', title: 'Erro ao excluir conversa' })
+    } finally {
+      setContactToDelete(null)
     }
   }
 
@@ -814,11 +845,14 @@ export default function Inbox() {
                     {filteredContacts.map((contact) => {
                       const isActive = selectedContact?.id === contact.id
                       return (
-                        <button
+                        <div
                           key={contact.id}
-                          onClick={() => setSelectedContact(contact)}
+                          onClick={() => {
+                            setSelectedContact(contact)
+                            setUnreadCounts((prev) => ({ ...prev, [contact.id]: 0 }))
+                          }}
                           className={cn(
-                            'w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-all',
+                            'w-full flex items-center gap-3 p-2.5 rounded-lg text-left transition-all cursor-pointer group',
                             isActive
                               ? 'bg-violet-50 ring-1 ring-violet-100'
                               : 'hover:bg-zinc-50 ring-1 ring-transparent',
@@ -852,27 +886,46 @@ export default function Inbox() {
                               >
                                 {contact.name || contact.phone}
                               </span>
-                              {contact.last_message_at && (
-                                <span
-                                  className={cn(
-                                    'text-[11px] shrink-0 whitespace-nowrap font-medium',
-                                    isActive ? 'text-violet-600' : 'text-zinc-400',
-                                  )}
-                                >
-                                  {format(new Date(contact.last_message_at), 'HH:mm')}
-                                </span>
-                              )}
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {contact.last_message_at && (
+                                  <span
+                                    className={cn(
+                                      'text-[11px] whitespace-nowrap font-medium',
+                                      isActive ? 'text-violet-600' : 'text-zinc-400',
+                                    )}
+                                  >
+                                    {format(new Date(contact.last_message_at), 'HH:mm')}
+                                  </span>
+                                )}
+                                {unreadCounts[contact.id] > 0 && (
+                                  <span className="min-w-[18px] h-[18px] flex items-center justify-center rounded-full bg-red-500 text-white text-[10px] font-bold px-1">
+                                    {unreadCounts[contact.id]}
+                                  </span>
+                                )}
+                              </div>
                             </div>
-                            <p
-                              className={cn(
-                                'text-[12.5px] truncate leading-snug',
-                                isActive ? 'text-violet-700/80' : 'text-zinc-500',
-                              )}
-                            >
-                              {contact.last_message || 'Nenhuma mensagem ainda'}
-                            </p>
+                            <div className="flex items-center justify-between gap-2">
+                              <p
+                                className={cn(
+                                  'text-[12.5px] truncate leading-snug flex-1 min-w-0',
+                                  isActive ? 'text-violet-700/80' : 'text-zinc-500',
+                                )}
+                              >
+                                {contact.last_message || 'Nenhuma mensagem ainda'}
+                              </p>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setContactToDelete(contact)
+                                }}
+                                className="opacity-0 group-hover:opacity-100 transition-opacity h-7 w-7 flex items-center justify-center rounded-md text-zinc-400 hover:text-red-600 hover:bg-red-50 shrink-0"
+                                title="Excluir conversa"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                           </div>
-                        </button>
+                        </div>
                       )
                     })}
                   </div>
@@ -1228,6 +1281,30 @@ export default function Inbox() {
           </>
         )}
       </div>
+
+      <AlertDialog
+        open={!!contactToDelete}
+        onOpenChange={(open) => !open && setContactToDelete(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir conversa?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza de que deseja excluir esta conversa? Todas as mensagens serão removidas
+              permanentemente.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteContact}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              Excluir
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

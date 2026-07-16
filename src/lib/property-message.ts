@@ -29,37 +29,16 @@ export function formatPropertyMessage(property: Property): string {
   }
 
   const details: string[] = []
-  if (property.bedrooms != null) {
+  if (property.bedrooms != null && property.bedrooms > 0) {
     details.push(`Quartos: ${property.bedrooms}`)
   }
-
-  const priceSale = property.price_sale ?? property.sale_price
-  const priceRent = property.price_rent ?? property.rent_price
-
-  if (priceSale != null && priceSale > 0) {
-    const formatted = Number(priceSale).toLocaleString('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-      minimumFractionDigits: 2,
-    })
-    details.push(`Valor de Venda: ${formatted}`)
-  }
-
-  if (priceRent != null && priceRent > 0) {
-    const formatted = Number(priceRent).toLocaleString('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-      minimumFractionDigits: 2,
-    })
-    details.push(`Valor de Locação: ${formatted}`)
-  }
-  if (property.bathrooms != null) {
+  if (property.bathrooms != null && property.bathrooms > 0) {
     details.push(`Banheiros: ${property.bathrooms}`)
   }
-  if (property.suites != null) {
+  if (property.suites != null && property.suites > 0) {
     details.push(`Suítes: ${property.suites}`)
   }
-  if (property.garage_spots != null) {
+  if (property.garage_spots != null && property.garage_spots > 0) {
     details.push(`Vagas: ${property.garage_spots}`)
   }
   if (property.built_area != null && property.built_area > 0) {
@@ -81,16 +60,33 @@ export function formatPropertyMessage(property: Property): string {
     details.push(`Área Privada: ${property.private_area} m²`)
   }
 
+  const priceSale = property.price_sale ?? property.sale_price
+  const priceRent = property.price_rent ?? property.rent_price
+
+  if (priceRent != null && priceRent > 0) {
+    const formatted = Number(priceRent).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      minimumFractionDigits: 2,
+    })
+    details.push(`Valor de Locação: ${formatted}`)
+  }
+
+  if (priceSale != null && priceSale > 0) {
+    const formatted = Number(priceSale).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      minimumFractionDigits: 2,
+    })
+    details.push(`Valor de Venda: ${formatted}`)
+  }
+
   if (details.length > 0) {
     lines.push(`*${details.join(' | ')}*`)
   }
 
-  if (property.description) {
-    lines.push(property.description)
-  }
-
   if (property.external_link) {
-    lines.push(property.external_link)
+    lines.push(`LINK DO IMÓVEL: ${property.external_link}`)
   }
 
   return lines.join('\n')
