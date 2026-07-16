@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-16T14:52:46.577Z",
+  "generatedAt": "2026-07-16T15:04:52.758Z",
   "collections": [
     {
       "name": "users",
@@ -29,19 +29,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
       "indexes": [
@@ -78,12 +73,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "pending",
-            "connecting",
-            "connected",
-            "disconnected"
-          ]
+          "selectValues": ["pending", "connecting", "connected", "disconnected"]
         },
         {
           "name": "qrcode",
@@ -96,24 +86,17 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         }
       ],
-      "indexes": [
-        "CREATE UNIQUE INDEX idx_wi_name ON whatsapp_instances (instance_name)"
-      ]
+      "indexes": ["CREATE UNIQUE INDEX idx_wi_name ON whatsapp_instances (instance_name)"]
     },
     {
       "name": "whatsapp_contacts",
@@ -175,19 +158,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "agent_paused",
@@ -200,12 +178,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "em_conversa",
-            "aguardando",
-            "resolvido",
-            "perdido"
-          ]
+          "selectValues": ["em_conversa", "aguardando", "resolvido", "perdido"]
         }
       ],
       "indexes": [
@@ -262,10 +235,7 @@
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "in",
-            "out"
-          ]
+          "selectValues": ["in", "out"]
         },
         {
           "name": "body",
@@ -284,32 +254,21 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "type",
           "type": "select",
           "required": false,
           "system": false,
-          "selectValues": [
-            "text",
-            "image",
-            "audio",
-            "document",
-            "video"
-          ]
+          "selectValues": ["text", "image", "audio", "document", "video"]
         },
         {
           "name": "media_file",
@@ -336,9 +295,7 @@
           "system": false
         }
       ],
-      "indexes": [
-        "CREATE UNIQUE INDEX idx_wm_id ON whatsapp_messages (message_id)"
-      ]
+      "indexes": ["CREATE UNIQUE INDEX idx_wm_id ON whatsapp_messages (message_id)"]
     },
     {
       "name": "ai_agents",
@@ -394,29 +351,21 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "provider",
           "type": "select",
           "required": true,
           "system": false,
-          "selectValues": [
-            "gemini",
-            "openai"
-          ]
+          "selectValues": ["gemini", "openai"]
         },
         {
           "name": "api_key",
@@ -498,19 +447,14 @@
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate"
-          ]
+          "autodateTriggers": ["onCreate"]
         },
         {
           "name": "updated",
           "type": "autodate",
           "required": false,
           "system": false,
-          "autodateTriggers": [
-            "onCreate",
-            "onUpdate"
-          ]
+          "autodateTriggers": ["onCreate", "onUpdate"]
         },
         {
           "name": "cover_image",

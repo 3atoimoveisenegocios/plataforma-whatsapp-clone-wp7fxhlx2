@@ -9,7 +9,7 @@ export function getYouTubeVideoId(url: string): string | null {
 
 export function getPropertyUrl(property: Property): string | null {
   if (property.slug) {
-    const baseUrl = import.meta.env.VITE_PROPERTY_BASE_URL || 'https://iris.3atoimoveis.com.br'
+    const baseUrl = import.meta.env.VITE_PROPERTY_BASE_URL || 'https://3atoimoveis.com.br'
     return `${baseUrl}/imovel/${property.slug}`
   }
   if (property.external_link) return property.external_link
@@ -103,7 +103,8 @@ export function formatPropertyMessage(property: Property): string {
 
   const propertyUrl = getPropertyUrl(property)
   if (propertyUrl) {
-    lines.push(`LINK DO IMÓVEL: ${propertyUrl}`)
+    lines.push('LINK DO IMÓVEL')
+    lines.push(propertyUrl)
   }
 
   if (property.youtube_link) {
