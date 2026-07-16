@@ -17,6 +17,7 @@ export interface Property {
   price_rent?: number | null
   sale_price?: number | null
   rent_price?: number | null
+  iptu_value?: number | null
   built_area?: number | null
   land_area?: number | null
   useful_area?: number | null

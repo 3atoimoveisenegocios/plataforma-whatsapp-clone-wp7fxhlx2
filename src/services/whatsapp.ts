@@ -9,6 +9,9 @@ export const getContacts = () =>
 export const toggleContactAgent = (contactId: string, paused: boolean) =>
   pb.collection('whatsapp_contacts').update(contactId, { agent_paused: paused })
 
+export const updateContactTags = (contactId: string, tags: string[]) =>
+  pb.collection('whatsapp_contacts').update(contactId, { tags })
+
 export const getMessages = (contactId: string) =>
   pb
     .collection('whatsapp_messages')

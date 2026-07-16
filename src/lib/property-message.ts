@@ -104,6 +104,15 @@ export function formatPropertyMessage(property: Property): string {
   const priceSale = property.price_sale ?? property.sale_price
   const priceRent = property.price_rent ?? property.rent_price
 
+  if (property.iptu_value != null && property.iptu_value > 0) {
+    const formattedIptu = Number(property.iptu_value).toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      minimumFractionDigits: 2,
+    })
+    details.push(`IPTU: ${formattedIptu}`)
+  }
+
   if (priceRent != null && priceRent > 0) {
     const formatted = Number(priceRent).toLocaleString('pt-BR', {
       style: 'currency',

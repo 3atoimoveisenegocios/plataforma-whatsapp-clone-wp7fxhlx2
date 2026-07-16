@@ -172,13 +172,41 @@ routerAdd(
         var item = items[i]
 
         var photoUrls = []
-        var rawPhotos = item.images || item.photos || item.pictures || []
-        if (typeof rawPhotos === 'string') rawPhotos = [rawPhotos]
+        var rawPhotos =
+          item.images ||
+          item.photos ||
+          item.pictures ||
+          item.gallery ||
+          item.fotos ||
+          item.imagens ||
+          item.photo_gallery ||
+          []
+        if (typeof rawPhotos === 'string') {
+          try {
+            var parsedPhotos = JSON.parse(rawPhotos)
+            rawPhotos = Array.isArray(parsedPhotos) ? parsedPhotos : [rawPhotos]
+          } catch (_) {
+            rawPhotos = [rawPhotos]
+          }
+        }
 
         if (Array.isArray(rawPhotos)) {
           for (var j = 0; j < rawPhotos.length; j++) {
             var p = rawPhotos[j]
-            if (typeof p !== 'string') continue
+            if (typeof p === 'object' && p !== null) {
+              if (p.url && typeof p.url === 'string') {
+                p = p.url
+              } else if (p.path && typeof p.path === 'string') {
+                p = p.path
+              } else if (p.src && typeof p.src === 'string') {
+                p = p.src
+              } else if (p.file && typeof p.file === 'string') {
+                p = p.file
+              } else {
+                continue
+              }
+            }
+            if (typeof p !== 'string' || !p) continue
             if (p.indexOf('http') === 0) {
               photoUrls.push(p)
             } else {

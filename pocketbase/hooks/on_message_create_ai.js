@@ -75,10 +75,13 @@ onRecordAfterCreateSuccess(async (e) => {
       'No momento estamos fora do horario de atendimento. Retornaremos em breve!'
 
     const now = new Date()
+    const utcMs = now.getTime()
+    const localMs = utcMs - 3 * 60 * 60 * 1000
+    const localDate = new Date(localMs)
     const dayNames = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado']
-    const currentDay = dayNames[now.getDay()]
+    const currentDay = dayNames[localDate.getUTCDay()]
 
-    const currentMinutes = now.getHours() * 60 + now.getMinutes()
+    const currentMinutes = localDate.getUTCHours() * 60 + localDate.getUTCMinutes()
     const startParts = startTime.split(':').map(Number)
     const endParts = endTime.split(':').map(Number)
     const startMinutes = (startParts[0] || 9) * 60 + (startParts[1] || 0)

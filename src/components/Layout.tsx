@@ -1,5 +1,5 @@
 import { Outlet, Link, useNavigate, useLocation } from 'react-router-dom'
-import { MessageSquare, Settings2, LogOut, Loader2, Bot, Kanban } from 'lucide-react'
+import { MessageSquare, Settings2, LogOut, Loader2, Bot, Kanban, BarChart3 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { useEffect, useState } from 'react'
 import { getInstances } from '@/services/whatsapp'
@@ -94,6 +94,7 @@ export default function Layout() {
   const navItems = [
     { to: '/inbox', label: 'Caixa de Entrada', icon: MessageSquare },
     { to: '/pipeline', label: 'Pipeline', icon: Kanban },
+    { to: '/dashboard', label: 'Dashboard', icon: BarChart3 },
     { to: '/agents', label: 'Agentes IA', icon: Bot },
   ]
 

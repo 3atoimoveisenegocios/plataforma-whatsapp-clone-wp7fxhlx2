@@ -47,7 +47,6 @@ const PAGE_SIZE = 24
 
 interface PropertyCatalogProps {
   onSendProperty: (property: Property, message: string, contactId?: string) => void
-  onSendAllPhotos?: (property: Property) => Promise<void>
   hasSelectedContact?: boolean
 }
 
@@ -66,7 +65,6 @@ function handleImageError(e: SyntheticEvent<HTMLImageElement>) {
 
 export function PropertyCatalog({
   onSendProperty,
-  onSendAllPhotos,
   hasSelectedContact = false,
 }: PropertyCatalogProps) {
   const [properties, setProperties] = useState<Property[]>([])
@@ -74,7 +72,6 @@ export function PropertyCatalog({
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [sendingId, setSendingId] = useState<string | null>(null)
-  const [sendingPhotosId, setSendingPhotosId] = useState<string | null>(null)
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE)
   const [selectedContact, setSelectedContact] = useState<any | null>(null)
 
@@ -177,63 +174,6 @@ export function PropertyCatalog({
     } else {
       onSendProperty(property, message)
       setTimeout(() => setSendingId(null), 2000)
-    }
-  }
-
-  const handleSendAllPhotos = async (property: Property) => {
-    if (!selectedContact && !hasSelectedContact) {
-      toast.error('Selecione um contato antes de enviar.')
-      return
-    }
-
-    const imageUrls = getPropertyImageUrls(property)
-    if (imageUrls.length === 0) {
-      toast.error('Este imóvel não possui fotos.')
-      return
-    }
-
-    setSendingPhotosId(property.id)
-
-    try {
-      if (selectedContact) {
-        for (let i = 0; i < imageUrls.length; i++) {
-          try {
-            const response = await fetch(imageUrls[i])
-            const blob = await response.blob()
-            const file = new File([blob], `property-image-${i + 1}.jpg`, {
-              type: blob.type || 'image/jpeg',
-            })
-            const base64 = await new Promise<string>((resolve) => {
-              const reader = new FileReader()
-              reader.onload = () => {
-                const result = reader.result as string
-                resolve(result.split(',')[1])
-              }
-              reader.readAsDataURL(file)
-            })
-
-            await sendMessage(selectedContact.id, {
-              text: '',
-              file,
-              type: 'image',
-              base64,
-              instance_id: selectedContact.instance_id,
-              remote_jid: selectedContact.remote_jid,
-            })
-
-            if (i < imageUrls.length - 1) {
-              await new Promise((r) => setTimeout(r, 1500))
-            }
-          } catch (err) {
-            console.error('Failed to send image', err)
-          }
-        }
-        toast.success(`${imageUrls.length} fotos enviadas com sucesso!`)
-      } else if (onSendAllPhotos) {
-        await onSendAllPhotos(property)
-      }
-    } finally {
-      setTimeout(() => setSendingPhotosId(null), 2000)
     }
   }
 
@@ -474,9 +414,20 @@ export function PropertyCatalog({
                     {(() => {
                       const priceSale = property.price_sale ?? property.sale_price
                       const priceRent = property.price_rent ?? property.rent_price
-                      if (!priceSale && !priceRent) return null
+                      const hasIptu = property.iptu_value != null && property.iptu_value > 0
+                      if (!priceSale && !priceRent && !hasIptu) return null
                       return (
                         <div className="flex flex-wrap gap-x-3 gap-y-1">
+                          {hasIptu ? (
+                            <div>
+                              <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
+                                IPTU
+                              </span>
+                              <p className="text-sm font-medium text-zinc-600">
+                                {formatPrice(property.iptu_value)}
+                              </p>
+                            </div>
+                          ) : null}
                           {priceRent ? (
                             <div>
                               <span className="text-[10px] text-zinc-500 uppercase tracking-wide">
@@ -512,7 +463,7 @@ export function PropertyCatalog({
                       <Send className="h-3.5 w-3.5 mr-1.5" />
                       {sendingId === property.id ? 'Enviando...' : 'Enviar no chat'}
                     </Button>
-                    <div className="space-y-2 pt-3">
+                    <div className="space-y-2 pt-1">
                       {(() => {
                         const url = getPropertyUrl(property)
                         return url ? (
@@ -526,28 +477,6 @@ export function PropertyCatalog({
                           </a>
                         ) : null
                       })()}
-                      <Button
-                        size="sm"
-                        className="w-full h-8 text-xs font-medium bg-emerald-600 hover:bg-emerald-700"
-                        onClick={() => handleSendAllPhotos(property)}
-                        disabled={
-                          (!hasSelectedContact && !selectedContact) ||
-                          sendingPhotosId === property.id ||
-                          getPropertyImageUrls(property).length === 0
-                        }
-                      >
-                        {sendingPhotosId === property.id ? (
-                          <>
-                            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-                            Enviando fotos...
-                          </>
-                        ) : (
-                          <>
-                            <ImagePlus className="h-3.5 w-3.5 mr-1.5" />
-                            Enviar Fotos ({getPropertyImageUrls(property).length})
-                          </>
-                        )}
-                      </Button>
                       {property.youtube_link &&
                         (() => {
                           const videoId = getYouTubeVideoId(property.youtube_link)

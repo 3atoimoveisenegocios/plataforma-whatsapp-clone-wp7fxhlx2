@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-16T17:08:24.449Z",
+  "generatedAt": "2026-07-16T18:39:39.382Z",
   "collections": [
     {
       "name": "users",
@@ -179,6 +179,12 @@
           "required": false,
           "system": false,
           "selectValues": ["em_conversa", "aguardando", "resolvido", "perdido"]
+        },
+        {
+          "name": "tags",
+          "type": "json",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": [
@@ -402,6 +408,18 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "welcome_enabled",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "welcome_message",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": []
@@ -549,6 +567,12 @@
         {
           "name": "slug",
           "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "iptu_value",
+          "type": "number",
           "required": false,
           "system": false
         }

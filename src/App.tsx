@@ -11,6 +11,7 @@ import ConnectionSetup from './pages/ConnectionSetup'
 import Inbox from './pages/Inbox'
 import Agents from './pages/Agents'
 import Pipeline from './pages/Pipeline'
+import Dashboard from './pages/Dashboard'
 import NotFound from './pages/NotFound'
 
 const App = () => (
@@ -28,6 +29,7 @@ const App = () => (
             <Route path="/inbox" element={<Inbox />} />
             <Route path="/agents" element={<Agents />} />
             <Route path="/pipeline" element={<Pipeline />} />
+            <Route path="/dashboard" element={<Dashboard />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>

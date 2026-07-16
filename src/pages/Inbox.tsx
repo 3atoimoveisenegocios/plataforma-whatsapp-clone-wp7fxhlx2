@@ -31,6 +31,7 @@ import {
   Square,
   Bot,
   BotOff,
+  Tag,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -58,8 +59,10 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PropertyCatalog } from '@/components/inbox/PropertyCatalog'
+import { ContactTags } from '@/components/inbox/ContactTags'
 import type { Property } from '@/services/properties'
-import { getPropertyImageUrl, getPropertyImageUrls } from '@/lib/property-message'
+import { getPropertyImageUrl } from '@/lib/property-message'
+import { updateContactTags } from '@/services/whatsapp'
 
 export default function Inbox() {
   const [contacts, setContacts] = useState<any[]>([])
@@ -74,6 +77,7 @@ export default function Inbox() {
   const [activeTab, setActiveTab] = useState('conversas')
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
   const [contactToDelete, setContactToDelete] = useState<any | null>(null)
+  const [tagSearch, setTagSearch] = useState('')
 
   // File states
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -237,7 +241,11 @@ export default function Inbox() {
 
   useEffect(() => {
     const filtered = contacts.filter(
-      (c) => c.name?.toLowerCase().includes(search.toLowerCase()) || c.phone?.includes(search),
+      (c) =>
+        c.name?.toLowerCase().includes(search.toLowerCase()) ||
+        c.phone?.includes(search) ||
+        (Array.isArray(c.tags) &&
+          c.tags.some((t: string) => t.toLowerCase().includes(search.toLowerCase()))),
     )
     filtered.sort(
       (a, b) =>
@@ -577,103 +585,6 @@ export default function Inbox() {
     }
   }
 
-  const handleSendAllPhotos = async (property: Property) => {
-    if (!selectedContact) {
-      toast({ variant: 'destructive', title: 'Selecione uma conversa primeiro' })
-      return
-    }
-
-    const imageUrls = getPropertyImageUrls(property)
-    if (imageUrls.length === 0) {
-      toast({ variant: 'destructive', title: 'Este imóvel não possui fotos' })
-      return
-    }
-
-    toast({ title: `Enviando ${imageUrls.length} fotos...` })
-
-    for (let i = 0; i < imageUrls.length; i++) {
-      const imageUrl = imageUrls[i]
-      const tempId = `temp_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 9)}`
-      const nowIso = new Date().toISOString()
-
-      const optimisticMsg = {
-        id: tempId,
-        body: '',
-        direction: 'out',
-        type: 'image',
-        sent_at: nowIso,
-        created: nowIso,
-        contact_id: selectedContact.id,
-        status: 'sending',
-        localUrl: imageUrl,
-        file_name: `property-image-${i + 1}.jpg`,
-        mime_type: 'image/jpeg',
-      }
-
-      setMessages((prev) => sortMessagesList([...prev, optimisticMsg]))
-
-      try {
-        const response = await fetch(imageUrl)
-        const blob = await response.blob()
-        const file = new File([blob], `property-image-${i + 1}.jpg`, {
-          type: blob.type || 'image/jpeg',
-        })
-        const base64 = await new Promise<string>((resolve) => {
-          const reader = new FileReader()
-          reader.onload = () => {
-            const result = reader.result as string
-            resolve(result.split(',')[1])
-          }
-          reader.readAsDataURL(file)
-        })
-
-        const res = await sendMessage(selectedContact.id, {
-          text: '',
-          file,
-          type: 'image',
-          base64,
-          instance_id: selectedContact.instance_id,
-          remote_jid: selectedContact.remote_jid,
-        })
-
-        const createdMsg = res?.message || res
-        if (createdMsg && createdMsg.id) {
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === createdMsg.id)) {
-              return prev.filter((m) => m.id !== tempId)
-            }
-            return sortMessagesList(prev.map((m) => (m.id === tempId ? createdMsg : m)))
-          })
-        } else {
-          setMessages((prev) =>
-            sortMessagesList(prev.map((m) => (m.id === tempId ? { ...m, status: 'sent' } : m))),
-          )
-        }
-      } catch (error) {
-        console.error(error)
-        setMessages((prev) => prev.map((m) => (m.id === tempId ? { ...m, status: 'failed' } : m)))
-      }
-
-      if (i < imageUrls.length - 1) {
-        await new Promise((r) => setTimeout(r, 1500))
-      }
-    }
-
-    setContacts((prev) => {
-      const updated = prev.map((c) =>
-        c.id === selectedContact.id
-          ? { ...c, last_message: '📷 Fotos enviadas', last_message_at: new Date().toISOString() }
-          : c,
-      )
-      return updated.sort(
-        (a, b) =>
-          new Date(b.last_message_at || 0).getTime() - new Date(a.last_message_at || 0).getTime(),
-      )
-    })
-
-    toast({ title: `${imageUrls.length} fotos enviadas com sucesso!` })
-  }
-
   const handleDisconnect = async () => {
     try {
       await logoutInstance()
@@ -913,7 +824,7 @@ export default function Inbox() {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-[15px] w-[15px] text-zinc-400 pointer-events-none" />
                 <Input
-                  placeholder="Buscar contatos..."
+                  placeholder="Buscar contatos ou tags..."
                   className="pl-9 h-9 bg-zinc-50/80 border-zinc-200/70 text-[13.5px] placeholder:text-zinc-400 focus-visible:ring-violet-500/30 focus-visible:ring-offset-0 focus-visible:border-violet-300"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
@@ -1021,6 +932,24 @@ export default function Inbox() {
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
                             </div>
+                            {Array.isArray(contact.tags) && contact.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                {contact.tags.slice(0, 3).map((tag: string) => (
+                                  <span
+                                    key={tag}
+                                    className="inline-flex items-center gap-0.5 rounded bg-violet-50 px-1.5 py-0.5 text-[10px] font-medium text-violet-700 ring-1 ring-inset ring-violet-600/20"
+                                  >
+                                    <Tag className="h-2 w-2" />
+                                    {tag}
+                                  </span>
+                                ))}
+                                {contact.tags.length > 3 && (
+                                  <span className="text-[10px] text-zinc-400">
+                                    +{contact.tags.length - 3}
+                                  </span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       )
@@ -1033,7 +962,6 @@ export default function Inbox() {
         ) : (
           <PropertyCatalog
             onSendProperty={handleSendProperty}
-            onSendAllPhotos={handleSendAllPhotos}
             hasSelectedContact={!!selectedContact}
           />
         )}
@@ -1091,6 +1019,15 @@ export default function Inbox() {
                 <p className="text-[12px] text-zinc-500 truncate mt-0.5">{selectedContact.phone}</p>
               </div>
 
+              <ContactTags
+                contact={selectedContact}
+                onUpdate={(newTags) => {
+                  setSelectedContact((prev: any) => (prev ? { ...prev, tags: newTags } : prev))
+                  setContacts((prev) =>
+                    prev.map((c) => (c.id === selectedContact.id ? { ...c, tags: newTags } : c)),
+                  )
+                }}
+              />
               <Button
                 variant="ghost"
                 size="sm"

@@ -57,6 +57,8 @@ const formSchema = z.object({
   start_time: z.string().default('09:00'),
   end_time: z.string().default('18:00'),
   out_of_hours_message: z.string().default(''),
+  welcome_enabled: z.boolean().default(false),
+  welcome_message: z.string().default(''),
 })
 
 type AgentFormValues = z.infer<typeof formSchema>
@@ -85,6 +87,8 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
       start_time: '09:00',
       end_time: '18:00',
       out_of_hours_message: '',
+      welcome_enabled: false,
+      welcome_message: '',
     },
   })
 
@@ -114,6 +118,8 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
         start_time: agent.start_time || '09:00',
         end_time: agent.end_time || '18:00',
         out_of_hours_message: agent.out_of_hours_message || '',
+        welcome_enabled: agent.welcome_enabled || false,
+        welcome_message: agent.welcome_message || '',
       })
     } else {
       form.reset({
@@ -128,6 +134,8 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
         start_time: '09:00',
         end_time: '18:00',
         out_of_hours_message: '',
+        welcome_enabled: false,
+        welcome_message: '',
       })
     }
   }, [agent, form, open])
@@ -384,6 +392,48 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
                   )}
                 />
               </div>
+            )}
+            <FormField
+              control={form.control}
+              name="welcome_enabled"
+              render={({ field }) => (
+                <FormItem className="flex flex-row items-center justify-between rounded-xl bg-zinc-50/60 ring-1 ring-zinc-200/70 p-4">
+                  <div className="space-y-0.5">
+                    <FormLabel className="text-[14px] font-medium text-zinc-900">
+                      Mensagem de Boas-vindas
+                    </FormLabel>
+                    <p className="text-[12.5px] text-zinc-500">
+                      Envia uma mensagem automática para novos contatos na primeira interação.
+                    </p>
+                  </div>
+                  <FormControl>
+                    <Switch
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                      className="data-[state=checked]:bg-violet-600"
+                    />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+            {form.watch('welcome_enabled') && (
+              <FormField
+                control={form.control}
+                name="welcome_message"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Mensagem de Boas-vindas</FormLabel>
+                    <FormControl>
+                      <Textarea
+                        placeholder="Olá! Seja bem-vindo(a)! Em breve um de nossos corretores irá atendê-lo(a)."
+                        className="min-h-[80px]"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
             )}
             <div className="flex justify-end pt-4">
               <Button
