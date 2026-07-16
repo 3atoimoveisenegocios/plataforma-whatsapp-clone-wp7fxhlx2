@@ -103,11 +103,13 @@ export function formatPropertyMessage(property: Property): string {
 
   const propertyUrl = getPropertyUrl(property)
   if (propertyUrl) {
+    lines.push('')
     lines.push('LINK DO IMÓVEL')
     lines.push(propertyUrl)
   }
 
   if (property.youtube_link) {
+    lines.push('')
     lines.push(`VÍDEO: ${property.youtube_link}`)
   }
 
