@@ -8,11 +8,11 @@ export function getYouTubeVideoId(url: string): string | null {
 }
 
 export function getPropertyUrl(property: Property): string | null {
-  if (property.external_link) return property.external_link
   if (property.slug) {
-    const baseUrl = import.meta.env.VITE_PROPERTY_BASE_URL || window.location.origin
+    const baseUrl = import.meta.env.VITE_PROPERTY_BASE_URL || 'https://iris.3atoimoveis.com.br'
     return `${baseUrl}/imovel/${property.slug}`
   }
+  if (property.external_link) return property.external_link
   return null
 }
 
