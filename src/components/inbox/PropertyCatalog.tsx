@@ -3,7 +3,7 @@ import { toast } from 'sonner'
 import { getProperties, refreshProperties, type Property } from '@/services/properties'
 import { useRealtime } from '@/hooks/use-realtime'
 import { clearPropertiesCache } from '@/services/properties'
-import { formatPropertyMessage, getPropertyImageUrl } from '@/lib/property-message'
+import { formatPropertyMessage, getPropertyImageUrl, getPropertyUrl } from '@/lib/property-message'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
@@ -23,6 +23,7 @@ import {
   Layers,
   Building2,
   Lock,
+  Youtube,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ContactSelector } from '@/components/inbox/ContactSelector'
@@ -463,14 +464,28 @@ export function PropertyCatalog({
                       <Send className="h-3.5 w-3.5 mr-1.5" />
                       {sendingId === property.id ? 'Enviando...' : 'Enviar no chat'}
                     </Button>
-                    {property.external_link && (
+                    {(() => {
+                      const url = getPropertyUrl(property)
+                      return url ? (
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full h-8 flex items-center justify-center text-xs font-medium text-violet-600 hover:text-violet-700 border border-violet-200 rounded-md hover:bg-violet-50 transition-colors"
+                        >
+                          LINK DO IMÓVEL
+                        </a>
+                      ) : null
+                    })()}
+                    {property.youtube_link && (
                       <a
-                        href={property.external_link}
+                        href={property.youtube_link}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="w-full h-8 flex items-center justify-center text-xs font-medium text-violet-600 hover:text-violet-700 border border-violet-200 rounded-md hover:bg-violet-50 transition-colors"
+                        className="w-full h-8 flex items-center justify-center gap-1.5 text-xs font-medium text-red-600 hover:text-red-700 border border-red-200 rounded-md hover:bg-red-50 transition-colors"
                       >
-                        LINK DO IMÓVEL
+                        <Youtube className="h-3.5 w-3.5" />
+                        ASSISTIR VÍDEO
                       </a>
                     )}
                   </div>

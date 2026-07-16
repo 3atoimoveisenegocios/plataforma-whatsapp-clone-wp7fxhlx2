@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-16T02:23:02.164Z",
+  "generatedAt": "2026-07-16T13:59:04.407Z",
   "collections": [
     {
       "name": "users",
@@ -509,9 +509,24 @@
           "type": "number",
           "required": false,
           "system": false
+        },
+        {
+          "name": "youtube_link",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "slug",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
-      "indexes": ["CREATE INDEX idx_properties_name ON properties (name)"]
+      "indexes": [
+        "CREATE INDEX idx_properties_name ON properties (name)",
+        "CREATE UNIQUE INDEX `idx_properties_slug` ON `properties` (slug) WHERE slug != ''"
+      ]
     }
   ]
 }

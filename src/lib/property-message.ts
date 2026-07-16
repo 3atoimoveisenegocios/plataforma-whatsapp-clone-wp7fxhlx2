@@ -1,5 +1,21 @@
 import type { Property } from '@/services/properties'
 
+export function getYouTubeVideoId(url: string): string | null {
+  const match = url.match(
+    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/v\/)([^&?#\s]{11})/,
+  )
+  return match ? match[1] : null
+}
+
+export function getPropertyUrl(property: Property): string | null {
+  if (property.external_link) return property.external_link
+  if (property.slug) {
+    const baseUrl = import.meta.env.VITE_PROPERTY_BASE_URL || window.location.origin
+    return `${baseUrl}/imovel/${property.slug}`
+  }
+  return null
+}
+
 export function getPropertyImageUrl(property: Property): string | null {
   const baseUrl = import.meta.env.VITE_POCKETBASE_URL
 
@@ -85,8 +101,13 @@ export function formatPropertyMessage(property: Property): string {
     lines.push(`*${details.join(' | ')}*`)
   }
 
-  if (property.external_link) {
-    lines.push(`LINK DO IMÓVEL: ${property.external_link}`)
+  const propertyUrl = getPropertyUrl(property)
+  if (propertyUrl) {
+    lines.push(`LINK DO IMÓVEL: ${propertyUrl}`)
+  }
+
+  if (property.youtube_link) {
+    lines.push(`VÍDEO: ${property.youtube_link}`)
   }
 
   return lines.join('\n')
