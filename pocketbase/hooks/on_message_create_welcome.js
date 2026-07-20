@@ -42,6 +42,42 @@ onRecordAfterCreateSuccess((e) => {
   const welcomeMessage = agent.getString('welcome_message')
   if (!welcomeMessage || !welcomeMessage.trim()) return e.next()
 
+  // ===== BUSINESS HOURS CHECK =====
+  const businessHoursEnabled = agent.getBool('business_hours_enabled')
+  if (businessHoursEnabled) {
+    let operatingDays = []
+    try {
+      const raw = agent.getString('operating_days')
+      if (raw) operatingDays = JSON.parse(raw)
+    } catch (_) {}
+
+    const startTime = agent.getString('start_time') || '09:00'
+    const endTime = agent.getString('end_time') || '18:00'
+
+    const now = new Date()
+    const utcMs = now.getTime()
+    const localMs = utcMs - 3 * 60 * 60 * 1000
+    const localDate = new Date(localMs)
+
+    const currentDayNum = localDate.getUTCDay()
+    const currentMinutes = localDate.getUTCHours() * 60 + localDate.getUTCMinutes()
+    const startParts = startTime.split(':').map(Number)
+    const endParts = endTime.split(':').map(Number)
+    const startMinutes = (startParts[0] || 8) * 60 + (startParts[1] || 0)
+    const endMinutes = (endParts[0] || 18) * 60 + (endParts[1] || 0)
+
+    const dayNames = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado']
+    const currentDayName = dayNames[currentDayNum]
+    const isOperatingDay =
+      operatingDays.indexOf(currentDayNum) !== -1 || operatingDays.indexOf(currentDayName) !== -1
+    const isWithinHours = currentMinutes >= startMinutes && currentMinutes <= endMinutes
+
+    if (!isOperatingDay || !isWithinHours) {
+      return e.next()
+    }
+  }
+  // ===== END BUSINESS HOURS CHECK =====
+
   const contact = $app.findRecordById('whatsapp_contacts', contactId)
 
   let instance
