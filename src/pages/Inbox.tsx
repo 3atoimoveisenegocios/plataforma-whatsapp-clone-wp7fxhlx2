@@ -19,6 +19,7 @@ import {
   User,
   Loader2,
   AlertCircle,
+  ArrowLeft,
   MessageSquare,
   Paperclip,
   Image as ImageIcon,
@@ -32,6 +33,7 @@ import {
   Bot,
   BotOff,
   Tag,
+  MoreVertical,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -51,6 +53,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -60,6 +63,7 @@ import {
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PropertyCatalog } from '@/components/inbox/PropertyCatalog'
 import { ContactTags } from '@/components/inbox/ContactTags'
+import { TagsInput } from '@/components/inbox/TagsInput'
 import type { Property } from '@/services/properties'
 import { getPropertyImageUrl } from '@/lib/property-message'
 import { updateContactTags } from '@/services/whatsapp'
@@ -78,6 +82,10 @@ export default function Inbox() {
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
   const [contactToDelete, setContactToDelete] = useState<any | null>(null)
   const [tagSearch, setTagSearch] = useState('')
+  const [tagsDialogOpen, setTagsDialogOpen] = useState(false)
+  const [initError, setInitError] = useState(false)
+  const [togglingAgent, setTogglingAgent] = useState(false)
+  const [messagesError, setMessagesError] = useState(false)
 
   // File states
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -122,29 +130,37 @@ export default function Inbox() {
     }
   }, [audioPreviewUrl])
 
-  useEffect(() => {
-    const init = async () => {
-      const insts = await getInstances()
-      if (insts.length > 0) {
-        setInstance(insts[0])
-      }
-
+  const initialize = async () => {
+    setInitError(false)
+    setLoadingContacts(true)
+    try {
       try {
-        const data = await getContacts()
-        setContacts(data)
-        setFilteredContacts(data)
-
-        if (location.state?.contactId) {
-          const contact = data.find((c) => c.id === location.state.contactId)
-          if (contact) setSelectedContact(contact)
+        const insts = await getInstances()
+        if (insts.length > 0) {
+          setInstance(insts[0])
         }
       } catch (e) {
-        console.error(e)
-      } finally {
-        setLoadingContacts(false)
+        console.error('Failed to load instances:', e)
       }
+
+      const data = await getContacts()
+      setContacts(data)
+      setFilteredContacts(data)
+
+      if (location.state?.contactId) {
+        const contact = data.find((c) => c.id === location.state.contactId)
+        if (contact) setSelectedContact(contact)
+      }
+    } catch (e) {
+      console.error('Failed to initialize:', e)
+      setInitError(true)
+    } finally {
+      setLoadingContacts(false)
     }
-    init()
+  }
+
+  useEffect(() => {
+    initialize()
   }, [])
 
   useEffect(() => {
@@ -166,9 +182,13 @@ export default function Inbox() {
   }, [])
 
   useRealtime('whatsapp_instances', async () => {
-    const insts = await getInstances()
-    if (insts.length > 0) {
-      setInstance(insts[0])
+    try {
+      const insts = await getInstances()
+      if (insts.length > 0) {
+        setInstance(insts[0])
+      }
+    } catch (e) {
+      console.error('Failed to refresh instances:', e)
     }
   })
 
@@ -221,6 +241,7 @@ export default function Inbox() {
   useEffect(() => {
     if (selectedContactId) {
       setMessages([])
+      setMessagesError(false)
       isFirstLoadRef.current = true
       loadMessages(selectedContactId)
       clearFile()
@@ -326,11 +347,13 @@ export default function Inbox() {
 
   const loadMessages = async (contactId: string) => {
     setLoadingMessages(true)
+    setMessagesError(false)
     try {
       const msgs = await getMessages(contactId)
       setMessages(sortMessagesList(msgs))
     } catch (e) {
       console.error(e)
+      setMessagesError(true)
     } finally {
       setLoadingMessages(false)
     }
@@ -450,8 +473,9 @@ export default function Inbox() {
   }
 
   const handleToggleAgent = async () => {
-    if (!selectedContact) return
+    if (!selectedContact || togglingAgent) return
     const newStatus = !selectedContact.agent_paused
+    setTogglingAgent(true)
     try {
       setSelectedContact((prev: any) => ({ ...prev, agent_paused: newStatus }))
       setContacts((prev) =>
@@ -467,6 +491,8 @@ export default function Inbox() {
         prev.map((c) => (c.id === selectedContact.id ? { ...c, agent_paused: !newStatus } : c)),
       )
       toast({ variant: 'destructive', title: 'Erro ao atualizar status da IA' })
+    } finally {
+      setTogglingAgent(false)
     }
   }
 
@@ -837,6 +863,24 @@ export default function Inbox() {
                 <div className="flex items-center justify-center p-10">
                   <Loader2 className="h-5 w-5 animate-spin text-violet-500" />
                 </div>
+              ) : initError ? (
+                <div className="flex flex-col items-center justify-center p-10 text-center">
+                  <div className="h-12 w-12 rounded-full bg-red-50 flex items-center justify-center mb-3">
+                    <AlertCircle className="h-5 w-5 text-red-500" />
+                  </div>
+                  <p className="text-sm font-medium text-zinc-700">Falha ao carregar contatos</p>
+                  <p className="text-xs text-zinc-500 mt-1">
+                    Verifique sua conexão e tente novamente
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 h-8 text-xs"
+                    onClick={() => initialize()}
+                  >
+                    Tentar novamente
+                  </Button>
+                </div>
               ) : filteredContacts.length === 0 ? (
                 <div className="flex flex-col items-center justify-center p-10 text-center">
                   <div className="h-12 w-12 rounded-full bg-zinc-100 flex items-center justify-center mb-3">
@@ -997,7 +1041,7 @@ export default function Inbox() {
                 onClick={() => setSelectedContact(null)}
                 title="Voltar"
               >
-                <AlertCircle className="h-5 w-5 rotate-90 shrink-0" />
+                <ArrowLeft className="h-5 w-5 shrink-0" />
               </Button>
               <Avatar className="h-10 w-10 ring-2 ring-zinc-100 shrink-0">
                 <AvatarFallback className="bg-gradient-to-br from-violet-100 to-violet-200 text-violet-700 text-[13px] font-semibold">
@@ -1011,7 +1055,7 @@ export default function Inbox() {
                     {selectedContact.name || selectedContact.phone}
                   </h3>
                   {selectedContact.agent_paused && (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 whitespace-nowrap shrink-0">
+                    <span className="hidden md:inline-flex items-center gap-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 ring-1 ring-inset ring-amber-600/20 whitespace-nowrap shrink-0">
                       <BotOff className="h-2.5 w-2.5" />
                       IA Pausada
                     </span>
@@ -1020,21 +1064,24 @@ export default function Inbox() {
                 <p className="text-[12px] text-zinc-500 truncate mt-0.5">{selectedContact.phone}</p>
               </div>
 
-              <ContactTags
-                contact={selectedContact}
-                onUpdate={(newTags) => {
-                  setSelectedContact((prev: any) => (prev ? { ...prev, tags: newTags } : prev))
-                  setContacts((prev) =>
-                    prev.map((c) => (c.id === selectedContact.id ? { ...c, tags: newTags } : c)),
-                  )
-                }}
-              />
+              <div className="hidden md:block">
+                <ContactTags
+                  contact={selectedContact}
+                  onUpdate={(newTags) => {
+                    setSelectedContact((prev: any) => (prev ? { ...prev, tags: newTags } : prev))
+                    setContacts((prev) =>
+                      prev.map((c) => (c.id === selectedContact.id ? { ...c, tags: newTags } : c)),
+                    )
+                  }}
+                />
+              </div>
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={handleToggleAgent}
+                disabled={togglingAgent}
                 className={cn(
-                  'h-8 text-xs font-medium transition-colors shrink-0 px-2.5',
+                  'hidden md:inline-flex h-8 text-xs font-medium transition-colors shrink-0 px-2.5',
                   selectedContact.agent_paused
                     ? 'text-violet-600 hover:bg-violet-50 hover:text-violet-700'
                     : 'text-zinc-500 hover:text-amber-600 hover:bg-amber-50',
@@ -1045,7 +1092,9 @@ export default function Inbox() {
                     : 'Pausar respostas automáticas'
                 }
               >
-                {selectedContact.agent_paused ? (
+                {togglingAgent ? (
+                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                ) : selectedContact.agent_paused ? (
                   <>
                     <Bot className="h-4 w-4 mr-1.5" />
                     Reativar IA
@@ -1057,6 +1106,48 @@ export default function Inbox() {
                   </>
                 )}
               </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="md:hidden h-9 w-9 shrink-0 text-zinc-500 hover:text-zinc-900 hover:bg-zinc-100"
+                  >
+                    <MoreVertical className="h-5 w-5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  <DropdownMenuItem
+                    onClick={handleToggleAgent}
+                    className="gap-2 cursor-pointer"
+                    disabled={togglingAgent}
+                  >
+                    {togglingAgent ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin text-zinc-500" />
+                        <span>Processando...</span>
+                      </>
+                    ) : selectedContact.agent_paused ? (
+                      <>
+                        <Bot className="h-4 w-4 text-violet-600" />
+                        <span>Reativar IA</span>
+                      </>
+                    ) : (
+                      <>
+                        <BotOff className="h-4 w-4 text-amber-600" />
+                        <span>Pausar IA</span>
+                      </>
+                    )}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => setTagsDialogOpen(true)}
+                    className="gap-2 cursor-pointer"
+                  >
+                    <Tag className="h-4 w-4 text-zinc-500" />
+                    <span>Gerenciar Tags</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
 
             {/* Messages Area */}
@@ -1072,6 +1163,21 @@ export default function Inbox() {
               {loadingMessages ? (
                 <div className="flex justify-center p-4">
                   <Loader2 className="h-5 w-5 animate-spin text-violet-500" />
+                </div>
+              ) : messagesError ? (
+                <div className="flex flex-col items-center justify-center p-10 text-center">
+                  <div className="h-12 w-12 rounded-full bg-red-50 flex items-center justify-center mb-3">
+                    <AlertCircle className="h-5 w-5 text-red-500" />
+                  </div>
+                  <p className="text-sm font-medium text-zinc-700">Falha ao carregar mensagens</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 h-8 text-xs"
+                    onClick={() => selectedContactId && loadMessages(selectedContactId)}
+                  >
+                    Tentar novamente
+                  </Button>
                 </div>
               ) : messages.length === 0 ? (
                 <div className="flex justify-center p-4">
@@ -1317,6 +1423,29 @@ export default function Inbox() {
           </>
         )}
       </div>
+
+      <Dialog open={tagsDialogOpen} onOpenChange={setTagsDialogOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Gerenciar Tags</DialogTitle>
+          </DialogHeader>
+          <TagsInput
+            tags={Array.isArray(selectedContact?.tags) ? selectedContact.tags : []}
+            onChange={async (newTags) => {
+              if (!selectedContact) return
+              try {
+                await updateContactTags(selectedContact.id, newTags)
+                setSelectedContact((prev: any) => (prev ? { ...prev, tags: newTags } : prev))
+                setContacts((prev) =>
+                  prev.map((c) => (c.id === selectedContact.id ? { ...c, tags: newTags } : c)),
+                )
+              } catch (e) {
+                toast({ variant: 'destructive', title: 'Erro ao atualizar tags' })
+              }
+            }}
+          />
+        </DialogContent>
+      </Dialog>
 
       <AlertDialog
         open={!!contactToDelete}
