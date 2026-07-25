@@ -42,6 +42,89 @@ onRecordAfterCreateSuccess((e) => {
   const welcomeMessage = agent.getString('welcome_message')
   if (!welcomeMessage || !welcomeMessage.trim()) return e.next()
 
+  // ===== GREETING DETECTION =====
+  // Only send the welcome message if the first incoming message is a pure
+  // greeting (e.g., "bom dia", "oi", "ola") with no additional inquiry.
+  // If the message contains contextual content beyond a greeting, suppress
+  // the welcome message so the AI agent can respond contextually instead.
+  const messageBody = (msg.getString('body') || '').toLowerCase().trim()
+
+  const normalized = messageBody
+    .replace(/[áàâãä]/g, 'a')
+    .replace(/[éèêë]/g, 'e')
+    .replace(/[íìîï]/g, 'i')
+    .replace(/[óòôõö]/g, 'o')
+    .replace(/[úùûü]/g, 'u')
+    .replace(/[ç]/g, 'c')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+  const greetingPatterns = [
+    'bom dia',
+    'boa tarde',
+    'boa noite',
+    'oi',
+    'ola',
+    'e ai',
+    'eai',
+    'e ai tudo bem',
+    'opa',
+    'hello',
+    'hi',
+    'hey',
+    'dia',
+    'tarde',
+    'noite',
+    'tudo bem',
+    'como vai',
+    'blz',
+    'beleza',
+    'good morning',
+    'good afternoon',
+    'good evening',
+    'fala',
+    'salve',
+    'fala ai',
+  ]
+
+  let stripped = normalized
+  for (let i = 0; i < greetingPatterns.length; i++) {
+    const pattern = greetingPatterns[i]
+    if (stripped === pattern) {
+      stripped = ''
+      break
+    }
+    if (stripped.startsWith(pattern + ' ')) {
+      stripped = stripped.substring(pattern.length + 1).trim()
+    }
+    if (stripped.endsWith(' ' + pattern)) {
+      stripped = stripped.substring(0, stripped.length - pattern.length - 1).trim()
+    }
+  }
+
+  const fillers = [
+    'tudo bem',
+    'como vai voce',
+    'como vai',
+    'blz',
+    'beleza',
+    'como estao as coisas',
+    'tudo certo',
+    'tudo ok',
+  ]
+  for (let i = 0; i < fillers.length; i++) {
+    if (stripped === fillers[i]) {
+      stripped = ''
+      break
+    }
+  }
+
+  if (stripped.length > 0) {
+    return e.next()
+  }
+  // ===== END GREETING DETECTION =====
+
   // ===== BUSINESS HOURS CHECK =====
   const businessHoursEnabled = agent.getBool('business_hours_enabled')
   if (businessHoursEnabled) {
