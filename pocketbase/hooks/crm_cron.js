@@ -3,7 +3,7 @@ cronAdd('crm_status_updates', '*/1 * * * *', () => {
 
   const inConv = $app.findRecordsByFilter(
     'whatsapp_contacts',
-    "(status = 'in_conversation' || status = '') && last_message_at != '' && last_message_at <= {:date}",
+    "(status = 'em_conversa' || status = 'in_conversation' || status = '') && last_message_at != '' && last_message_at <= {:date}",
     '-created',
     100,
     0,
@@ -11,7 +11,7 @@ cronAdd('crm_status_updates', '*/1 * * * *', () => {
   )
 
   for (const contact of inConv) {
-    contact.set('status', 'waiting')
+    contact.set('status', 'aguardando')
     $app.save(contact)
   }
 
@@ -19,7 +19,7 @@ cronAdd('crm_status_updates', '*/1 * * * *', () => {
 
   const waiting = $app.findRecordsByFilter(
     'whatsapp_contacts',
-    "status = 'waiting' && updated <= {:date}",
+    "(status = 'aguardando' || status = 'waiting') && updated <= {:date}",
     '-created',
     100,
     0,
@@ -56,12 +56,12 @@ cronAdd('crm_status_updates', '*/1 * * * *', () => {
         apiKey = agent.getString('api_key')
       } catch (err) {}
 
-      let newStatus = 'resolved'
+      let newStatus = 'resolvido'
 
       if (apiKey) {
         const aiPrompt = `Analise o seguinte histórico de conversa do WhatsApp e classifique o status do lead.
-Responda APENAS com a palavra "resolved" se a dúvida foi resolvida, o atendimento foi finalizado com sucesso ou a conversa chegou a um fim natural.
-Responda APENAS com a palavra "lost" se o cliente desistiu, parou de responder no meio de um fluxo de venda/atendimento sem resolução, ou não tem mais interesse.
+Responda APENAS com a palavra "resolvido" se a dúvida foi resolvida, o atendimento foi finalizado com sucesso ou a conversa chegou a um fim natural.
+Responda APENAS com a palavra "perdido" se o cliente desistiu, parou de responder no meio de um fluxo de venda/atendimento sem resolução, ou não tem mais interesse.
 
 Histórico:
 ${historyText}`
@@ -88,7 +88,7 @@ ${historyText}`
           })
           if (res.statusCode === 200 && res.json && res.json.choices && res.json.choices[0]) {
             const answer = res.json.choices[0].message.content.toLowerCase()
-            if (answer.includes('lost')) newStatus = 'lost'
+            if (answer.includes('lost') || answer.includes('perdido')) newStatus = 'perdido'
           }
         } else {
           const res = $http.send({
@@ -101,7 +101,7 @@ ${historyText}`
           })
           if (res.statusCode === 200 && res.json && res.json.candidates && res.json.candidates[0]) {
             const answer = res.json.candidates[0].content.parts[0].text.toLowerCase()
-            if (answer.includes('lost')) newStatus = 'lost'
+            if (answer.includes('lost') || answer.includes('perdido')) newStatus = 'perdido'
           }
         }
       }
@@ -112,7 +112,7 @@ ${historyText}`
       $app
         .logger()
         .error('Error in AI classification', 'contact', contact.id, 'error', e.toString())
-      contact.set('status', 'resolved')
+      contact.set('status', 'resolvido')
       $app.save(contact)
     }
   }
