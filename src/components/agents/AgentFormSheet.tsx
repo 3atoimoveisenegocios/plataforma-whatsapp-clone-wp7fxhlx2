@@ -49,8 +49,8 @@ const DAYS_OF_WEEK = [
 const formSchema = z.object({
   instance_id: z.string().min(1, 'Instância é obrigatória'),
   name: z.string().min(1, 'Nome é obrigatório'),
-  description: z.string().optional(),
-  provider: z.enum(['gemini', 'openai'], { required_error: 'Provedor é obrigatório' }),
+  description: z.string().optional().default(''),
+  provider: z.enum(['gemini', 'openai']),
   api_key: z.string().min(1, 'Chave da API é obrigatória'),
   system_prompt: z.string().min(1, 'Prompt do sistema é obrigatório'),
   active: z.boolean().default(true),
@@ -64,7 +64,7 @@ const formSchema = z.object({
   greeting_keywords: z.string().default('oi, olá, bom dia, boa tarde, boa noite, ola, oie'),
 })
 
-type AgentFormValues = z.infer<typeof formSchema>
+type AgentFormValues = z.input<typeof formSchema>
 
 interface AgentFormSheetProps {
   open: boolean
