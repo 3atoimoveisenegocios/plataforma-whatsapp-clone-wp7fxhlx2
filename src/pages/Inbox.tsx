@@ -34,6 +34,7 @@ import {
   BotOff,
   Tag,
   MoreVertical,
+  Sparkles,
 } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -1205,32 +1206,62 @@ export default function Inbox() {
                           </span>
                         </div>
                       )}
-                      <div
-                        className={cn(
-                          'max-w-[85%] md:max-w-[68%] rounded-2xl px-3.5 py-2 relative animate-fade-in-up transition-opacity duration-300',
-                          isOut
-                            ? 'bg-[#d9fdd3] text-zinc-900 self-end rounded-tr-md shadow-[0_1px_1px_rgb(0_0_0_/_0.05)]'
-                            : 'bg-white text-zinc-900 self-start rounded-tl-md ring-1 ring-zinc-200/60 shadow-[0_1px_2px_rgb(0_0_0_/_0.04)]',
-                          msg.status === 'sending' && 'opacity-70',
-                        )}
-                      >
-                        {renderMessageBody(msg)}
-                        <div className="flex justify-end mt-1 items-center gap-1">
-                          <span className="text-[10px] text-zinc-500 opacity-80">
-                            {format(new Date(msgTime), 'HH:mm')}
+                      {msg.automation_type === 'suppressed_greeting' ? (
+                        <div className="flex justify-center my-1">
+                          <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 text-[10px] font-medium px-2.5 py-1 rounded-full ring-1 ring-amber-200">
+                            <Sparkles className="h-2.5 w-2.5" />
+                            Saudação suprimida
                           </span>
-                          {msg.status === 'sending' && (
-                            <Loader2 className="h-3 w-3 text-zinc-400 animate-spin" />
-                          )}
-                          {msg.status === 'failed' && (
-                            <AlertCircle className="h-3 w-3 text-red-500" title="Falha ao enviar" />
-                          )}
                         </div>
-                      </div>
+                      ) : (
+                        <div
+                          className={cn(
+                            'max-w-[85%] md:max-w-[68%] rounded-2xl px-3.5 py-2 relative animate-fade-in-up transition-opacity duration-300',
+                            isOut
+                              ? 'bg-[#d9fdd3] text-zinc-900 self-end rounded-tr-md shadow-[0_1px_1px_rgb(0_0_0/_0.05)]'
+                              : 'bg-white text-zinc-900 self-start rounded-tl-md ring-1 ring-zinc-200/60 shadow-[0_1px_2px_rgb(0_0_0/_0.04)]',
+                            msg.status === 'sending' && 'opacity-70',
+                          )}
+                        >
+                          {renderMessageBody(msg)}
+                          <div className="flex justify-end mt-1 items-center gap-1">
+                            {msg.automation_type && (
+                              <span
+                                className={cn(
+                                  'text-[9px] font-medium px-1.5 py-0.5 rounded-full ring-1',
+                                  msg.automation_type === 'welcome'
+                                    ? 'text-violet-600 bg-violet-50 ring-violet-100'
+                                    : msg.automation_type === 'out_of_hours'
+                                      ? 'text-amber-600 bg-amber-50 ring-amber-100'
+                                      : 'text-blue-600 bg-blue-50 ring-blue-100',
+                                )}
+                              >
+                                {msg.automation_type === 'welcome'
+                                  ? 'Saudação automática'
+                                  : msg.automation_type === 'out_of_hours'
+                                    ? 'Fora de expediente'
+                                    : 'Resposta automática'}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-zinc-500 opacity-80">
+                              {format(new Date(msgTime), 'HH:mm')}
+                            </span>{' '}
+                            {msg.status === 'sending' && (
+                              <Loader2 className="h-3 w-3 text-zinc-400 animate-spin" />
+                            )}
+                            {msg.status === 'failed' && (
+                              <AlertCircle
+                                className="h-3 w-3 text-red-500"
+                                title="Falha ao enviar"
+                              />
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )
                 })
-              )}
+              )}{' '}
             </div>
 
             {/* Input Area */}

@@ -5,11 +5,18 @@ onRecordAfterCreateSuccess((e) => {
   const contactId = msg.getString('contact_id')
   const instanceId = msg.getString('instance_id')
 
+  try {
+    const contact = $app.findRecordById('whatsapp_contacts', contactId)
+    if (contact.getBool('agent_paused')) return e.next()
+  } catch (_) {
+    return e.next()
+  }
+
   let existingMessages = []
   try {
     existingMessages = $app.findRecordsByFilter(
       'whatsapp_messages',
-      `contact_id='${contactId}' && direction='in'`,
+      "contact_id='" + contactId + "' && direction='in'",
       '-created',
       2,
       0,
@@ -24,7 +31,7 @@ onRecordAfterCreateSuccess((e) => {
   try {
     agents = $app.findRecordsByFilter(
       'ai_agents',
-      `instance_id='${instanceId}' && active=true`,
+      "instance_id='" + instanceId + "' && active=true",
       '-created',
       1,
       0,
@@ -42,90 +49,52 @@ onRecordAfterCreateSuccess((e) => {
   const welcomeMessage = agent.getString('welcome_message')
   if (!welcomeMessage || !welcomeMessage.trim()) return e.next()
 
-  // ===== GREETING DETECTION =====
-  // Only send the welcome message if the first incoming message is a pure
-  // greeting (e.g., "bom dia", "oi", "ola") with no additional inquiry.
-  // If the message contains contextual content beyond a greeting, suppress
-  // the welcome message so the AI agent can respond contextually instead.
+  let greetingKeywords = ['oi', 'olá', 'bom dia', 'boa tarde', 'boa noite', 'ola', 'oie']
+  try {
+    const raw = agent.getString('greeting_keywords')
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length > 0) greetingKeywords = parsed
+    }
+  } catch (_) {}
+
+  const normalize = (s) =>
+    s
+      .toLowerCase()
+      .replace(/[áàâãä]/g, 'a')
+      .replace(/[éèêë]/g, 'e')
+      .replace(/[íìîï]/g, 'i')
+      .replace(/[óòôõö]/g, 'o')
+      .replace(/[úùûü]/g, 'u')
+      .replace(/[ç]/g, 'c')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+  const normalizedKeywords = greetingKeywords.map(normalize).filter(Boolean)
+  if (normalizedKeywords.length === 0) return e.next()
+
   const messageBody = (msg.getString('body') || '').toLowerCase().trim()
+  const normalized = normalize(messageBody)
+  if (!normalized) return e.next()
 
-  const normalized = messageBody
-    .replace(/[áàâãä]/g, 'a')
-    .replace(/[éèêë]/g, 'e')
-    .replace(/[íìîï]/g, 'i')
-    .replace(/[óòôõö]/g, 'o')
-    .replace(/[úùûü]/g, 'u')
-    .replace(/[ç]/g, 'c')
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim()
+  let remaining = normalized
+  let matchedAny = false
 
-  const greetingPatterns = [
-    'bom dia',
-    'boa tarde',
-    'boa noite',
-    'oi',
-    'ola',
-    'e ai',
-    'eai',
-    'e ai tudo bem',
-    'opa',
-    'hello',
-    'hi',
-    'hey',
-    'dia',
-    'tarde',
-    'noite',
-    'tudo bem',
-    'como vai',
-    'blz',
-    'beleza',
-    'good morning',
-    'good afternoon',
-    'good evening',
-    'fala',
-    'salve',
-    'fala ai',
-  ]
-
-  let stripped = normalized
-  for (let i = 0; i < greetingPatterns.length; i++) {
-    const pattern = greetingPatterns[i]
-    if (stripped === pattern) {
-      stripped = ''
-      break
-    }
-    if (stripped.startsWith(pattern + ' ')) {
-      stripped = stripped.substring(pattern.length + 1).trim()
-    }
-    if (stripped.endsWith(' ' + pattern)) {
-      stripped = stripped.substring(0, stripped.length - pattern.length - 1).trim()
+  const sortedKeywords = normalizedKeywords.slice().sort((a, b) => b.length - a.length)
+  for (let i = 0; i < sortedKeywords.length; i++) {
+    const kw = sortedKeywords[i]
+    if (!kw) continue
+    const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const regex = new RegExp('\\b' + escaped + '\\b', 'g')
+    if (regex.test(remaining)) {
+      matchedAny = true
+      remaining = remaining.replace(regex, '').replace(/\s+/g, ' ').trim()
     }
   }
 
-  const fillers = [
-    'tudo bem',
-    'como vai voce',
-    'como vai',
-    'blz',
-    'beleza',
-    'como estao as coisas',
-    'tudo certo',
-    'tudo ok',
-  ]
-  for (let i = 0; i < fillers.length; i++) {
-    if (stripped === fillers[i]) {
-      stripped = ''
-      break
-    }
-  }
+  if (!matchedAny) return e.next()
 
-  if (stripped.length > 0) {
-    return e.next()
-  }
-  // ===== END GREETING DETECTION =====
-
-  // ===== BUSINESS HOURS CHECK =====
   const businessHoursEnabled = agent.getBool('business_hours_enabled')
   if (businessHoursEnabled) {
     let operatingDays = []
@@ -159,7 +128,40 @@ onRecordAfterCreateSuccess((e) => {
       return e.next()
     }
   }
-  // ===== END BUSINESS HOURS CHECK =====
+
+  if (remaining.length > 0) {
+    try {
+      const contact = $app.findRecordById('whatsapp_contacts', contactId)
+      const instance = $app.findRecordById('whatsapp_instances', instanceId)
+      const msgsCol = $app.findCollectionByNameOrId('whatsapp_messages')
+      const suppressRecord = new Record(msgsCol)
+      suppressRecord.set('user_id', contact.getString('user_id'))
+      suppressRecord.set('instance_id', instance.id)
+      suppressRecord.set('contact_id', contact.id)
+      suppressRecord.set('remote_jid', contact.getString('remote_jid'))
+      suppressRecord.set('message_id', 'suppress_' + $security.randomString(10))
+      suppressRecord.set('direction', 'out')
+      suppressRecord.set('body', 'Saudação suprimida')
+      suppressRecord.set('type', 'text')
+      suppressRecord.set('automation_type', 'suppressed_greeting')
+      suppressRecord.set('sent_at', new Date().toISOString())
+      $app.saveNoValidate(suppressRecord)
+    } catch (err) {
+      $app.logger().error('Failed to create suppressed greeting indicator', 'error', String(err))
+    }
+    return e.next()
+  }
+
+  const nowDate = new Date()
+  const localMs2 = nowDate.getTime() - 3 * 60 * 60 * 1000
+  const localDate2 = new Date(localMs2)
+  const hour = localDate2.getUTCHours()
+
+  let greetingPrefix = 'Boa noite'
+  if (hour >= 6 && hour < 12) greetingPrefix = 'Bom dia'
+  else if (hour >= 12 && hour < 18) greetingPrefix = 'Boa tarde'
+
+  const fullWelcomeMessage = greetingPrefix + '! ' + welcomeMessage
 
   const contact = $app.findRecordById('whatsapp_contacts', contactId)
 
@@ -186,7 +188,7 @@ onRecordAfterCreateSuccess((e) => {
       headers: { apikey: evoKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         number: contact.getString('remote_jid'),
-        text: welcomeMessage,
+        text: fullWelcomeMessage,
         delay: 1200,
       }),
       timeout: 15,
@@ -197,20 +199,27 @@ onRecordAfterCreateSuccess((e) => {
       if (res.json && res.json.key && res.json.key.id) messageId = res.json.key.id
       else if (res.json && res.json.messageId) messageId = res.json.messageId
 
-      const msgsCol = $app.findCollectionByNameOrId('whatsapp_messages')
-      const msgRecord = new Record(msgsCol)
+      const msgsCol2 = $app.findCollectionByNameOrId('whatsapp_messages')
+      const msgRecord = new Record(msgsCol2)
       msgRecord.set('user_id', contact.getString('user_id'))
       msgRecord.set('instance_id', instance.id)
       msgRecord.set('contact_id', contact.id)
       msgRecord.set('remote_jid', contact.getString('remote_jid'))
       msgRecord.set('message_id', messageId)
       msgRecord.set('direction', 'out')
-      msgRecord.set('body', welcomeMessage)
+      msgRecord.set('body', fullWelcomeMessage)
       msgRecord.set('type', 'text')
+      msgRecord.set('automation_type', 'welcome')
       msgRecord.set('sent_at', new Date().toISOString())
       $app.saveNoValidate(msgRecord)
 
-      contact.set('last_message', welcomeMessage)
+      try {
+        const incomingMsg = $app.findRecordById('whatsapp_messages', msg.id)
+        incomingMsg.set('greeting_sent', true)
+        $app.saveNoValidate(incomingMsg)
+      } catch (_) {}
+
+      contact.set('last_message', fullWelcomeMessage)
       contact.set('last_message_at', new Date().toISOString())
       $app.saveNoValidate(contact)
     } else {

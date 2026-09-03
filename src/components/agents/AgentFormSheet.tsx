@@ -61,6 +61,7 @@ const formSchema = z.object({
   out_of_hours_message: z.string().default(''),
   welcome_enabled: z.boolean().default(false),
   welcome_message: z.string().default(''),
+  greeting_keywords: z.string().default('oi, olá, bom dia, boa tarde, boa noite, ola, oie'),
 })
 
 type AgentFormValues = z.infer<typeof formSchema>
@@ -92,6 +93,7 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
       out_of_hours_message: '',
       welcome_enabled: false,
       welcome_message: '',
+      greeting_keywords: 'oi, olá, bom dia, boa tarde, boa noite, ola, oie',
     },
   })
 
@@ -124,6 +126,9 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
         out_of_hours_message: agent.out_of_hours_message || '',
         welcome_enabled: agent.welcome_enabled ?? false,
         welcome_message: agent.welcome_message || '',
+        greeting_keywords: Array.isArray(agent.greeting_keywords)
+          ? agent.greeting_keywords.join(', ')
+          : 'oi, olá, bom dia, boa tarde, boa noite, ola, oie',
       })
     } else {
       const firstInstanceId = instances.length > 0 ? instances[0].id : ''
@@ -142,6 +147,7 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
         out_of_hours_message: '',
         welcome_enabled: false,
         welcome_message: '',
+        greeting_keywords: 'oi, olá, bom dia, boa tarde, boa noite, ola, oie',
       })
     }
   }, [agent, form, open, instances])
@@ -157,7 +163,14 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
   const onSubmit = async (values: AgentFormValues) => {
     if (!user) return
     try {
-      const data = { ...values, user_id: user.id }
+      const data = {
+        ...values,
+        user_id: user.id,
+        greeting_keywords: values.greeting_keywords
+          .split(',')
+          .map((k: string) => k.trim())
+          .filter(Boolean),
+      }
 
       if (agent) {
         await updateAiAgent(agent.id, data)
@@ -437,23 +450,42 @@ export function AgentFormSheet({ open, onOpenChange, agent }: AgentFormSheetProp
               )}
             />
             {form.watch('welcome_enabled') && (
-              <FormField
-                control={form.control}
-                name="welcome_message"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Mensagem de Boas-vindas</FormLabel>
-                    <FormControl>
-                      <Textarea
-                        placeholder="Olá! Seja bem-vindo(a)! Em breve um de nossos corretores irá atendê-lo(a)."
-                        className="min-h-[80px]"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <>
+                <FormField
+                  control={form.control}
+                  name="welcome_message"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Mensagem de Boas-vindas</FormLabel>
+                      <FormControl>
+                        <Textarea
+                          placeholder="Olá! Seja bem-vindo(a)! Em breve um de nossos corretores irá atendê-lo(a)."
+                          className="min-h-[80px]"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="greeting_keywords"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Palavras de Saudação</FormLabel>
+                      <FormControl>
+                        <Input placeholder="oi, olá, bom dia, boa tarde, boa noite" {...field} />
+                      </FormControl>
+                      <p className="text-[12px] text-zinc-500">
+                        Palavras que disparam a saudação automática quando enviadas sozinhas
+                        (separadas por vírgula).
+                      </p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </>
             )}
             <div className="flex justify-end pt-4">
               <Button

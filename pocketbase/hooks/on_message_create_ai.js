@@ -35,6 +35,12 @@ onRecordAfterCreateSuccess(async (e) => {
     return e.next()
   }
 
+  // Check if greeting was already sent by the greeting hook
+  try {
+    const freshMsg = $app.findRecordById('whatsapp_messages', msg.id)
+    if (freshMsg.getBool('greeting_sent')) return e.next()
+  } catch (_) {}
+
   let agents
   try {
     agents = $app.findRecordsByFilter(
@@ -134,6 +140,7 @@ onRecordAfterCreateSuccess(async (e) => {
           msgRecord.set('direction', 'out')
           msgRecord.set('body', outOfHoursMessage)
           msgRecord.set('type', 'text')
+          msgRecord.set('automation_type', 'out_of_hours')
           msgRecord.set('sent_at', new Date().toISOString())
           $app.saveNoValidate(msgRecord)
 
@@ -328,6 +335,7 @@ onRecordAfterCreateSuccess(async (e) => {
           msgRecord.set('direction', 'out')
           msgRecord.set('body', reply)
           msgRecord.set('type', 'text')
+          msgRecord.set('automation_type', 'ai_response')
           msgRecord.set('sent_at', new Date().toISOString())
           $app.saveNoValidate(msgRecord)
 
@@ -352,6 +360,7 @@ onRecordAfterCreateSuccess(async (e) => {
       msgRecord.set('direction', 'out')
       msgRecord.set('body', errMsg)
       msgRecord.set('type', 'text')
+      msgRecord.set('automation_type', 'ai_response')
       msgRecord.set('sent_at', new Date().toISOString())
       $app.saveNoValidate(msgRecord)
 

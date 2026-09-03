@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-25T02:17:53.417Z",
+  "generatedAt": "2026-07-25T16:35:34.886Z",
   "collections": [
     {
       "name": "users",
@@ -299,6 +299,18 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "greeting_sent",
+          "type": "bool",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "automation_type",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
       "indexes": ["CREATE UNIQUE INDEX idx_wm_id ON whatsapp_messages (message_id)"]
@@ -418,6 +430,12 @@
         {
           "name": "welcome_message",
           "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "greeting_keywords",
+          "type": "json",
           "required": false,
           "system": false
         }
