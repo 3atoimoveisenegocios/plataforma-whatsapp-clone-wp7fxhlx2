@@ -22,28 +22,8 @@ export function extractFieldErrors(error: unknown): FieldErrors {
 
 export function getErrorMessage(error: unknown): string {
   if (!(error instanceof ClientResponseError)) {
-    return error instanceof Error ? error.message : 'Ocorreu um erro inesperado.'
+    return error instanceof Error ? error.message : 'An unexpected error occurred.'
   }
-
   const msgs = Object.values(extractFieldErrors(error))
-  if (msgs.length > 0) {
-    return msgs.join(' ')
-  }
-
-  // PocketBase default error messages translation
-  const rawMsg = error.message || ''
-  if (error.status === 400) {
-    if (rawMsg.toLowerCase().includes('failed to authenticate')) {
-      return 'E-mail ou senha incorretos. Verifique suas credenciais.'
-    }
-    if (rawMsg.toLowerCase().includes('something went wrong')) {
-      return 'E-mail ou senha inválidos. Por favor, tente novamente.'
-    }
-  }
-
-  if (error.status === 0) {
-    return 'Não foi possível conectar ao servidor. Verifique sua conexão.'
-  }
-
-  return rawMsg || 'Ocorreu um erro inesperado ao processar sua solicitação.'
+  return msgs.length > 0 ? msgs.join(' ') : error.message || 'An unexpected error occurred.'
 }
