@@ -32,8 +32,18 @@
       var body = e.requestInfo().body || {}
       var to = body.to ? String(body.to).trim() : ''
       var text = body.text != null ? String(body.text).trim() : ''
+      var mediaUrl = body.media_url || body.media || body.image_url || ''
+      if (typeof mediaUrl === 'string') {
+        mediaUrl = mediaUrl.trim()
+      } else {
+        mediaUrl = ''
+      }
+      var caption = body.caption != null ? String(body.caption).trim() : text
+      var mediaType = body.media_type || body.mediatype || 'image'
+      var mimeType = body.mime_type || body.mimetype || 'image/jpeg'
+      var fileName = body.file_name || body.fileName || 'imagem.jpg'
 
-      if (!to || !text) {
+      if (!to || (!text && !caption)) {
         return e.json(400, {
           ok: false,
           error: 'Missing required fields: to and text are required',
@@ -123,29 +133,84 @@
         evoUrlSanitized = evoUrlSanitized.slice(0, -1)
       }
 
-      var evoRes
-      try {
-        evoRes = $http.send({
-          url: evoUrlSanitized + '/message/sendText/' + instanceName,
-          method: 'POST',
-          headers: {
-            apikey: evoKey,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            number: remoteJid,
-            text: text,
-            delay: 1200,
-          }),
-          timeout: 20,
-        })
-      } catch (netErr) {
-        $app.logger().error('Evolution API HTTP send exception', 'error', String(netErr))
-        return e.json(502, {
-          ok: false,
-          status: 'failed',
-          error: 'Failed to communicate with Evolution API: ' + String(netErr),
-        })
+      var evoRes = null
+      var sentMode = 'text'
+      var messageContent = caption || text
+
+      // Se informada mídia, tentar enviar via /message/sendMedia com fallback para /message/sendText
+      if (mediaUrl) {
+        try {
+          evoRes = $http.send({
+            url: evoUrlSanitized + '/message/sendMedia/' + instanceName,
+            method: 'POST',
+            headers: {
+              apikey: evoKey,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              number: remoteJid,
+              mediatype: mediaType,
+              mimetype: mimeType,
+              caption: messageContent,
+              media: mediaUrl,
+              fileName: fileName,
+              delay: 1200,
+            }),
+            timeout: 25,
+          })
+
+          if (evoRes && (evoRes.statusCode === 200 || evoRes.statusCode === 201)) {
+            sentMode = 'media'
+          } else {
+            $app
+              .logger()
+              .warn(
+                'Evolution API sendMedia failed, attempting fallback to sendText',
+                'statusCode',
+                evoRes ? evoRes.statusCode : 0,
+                'response',
+                evoRes && evoRes.json ? JSON.stringify(evoRes.json) : '',
+              )
+            evoRes = null
+          }
+        } catch (mediaErr) {
+          $app
+            .logger()
+            .warn(
+              'Evolution API sendMedia exception, falling back to sendText',
+              'error',
+              String(mediaErr),
+            )
+          evoRes = null
+        }
+      }
+
+      // Envio de texto (ou fallback se o envio de mídia não teve sucesso)
+      if (!evoRes) {
+        try {
+          evoRes = $http.send({
+            url: evoUrlSanitized + '/message/sendText/' + instanceName,
+            method: 'POST',
+            headers: {
+              apikey: evoKey,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              number: remoteJid,
+              text: messageContent,
+              delay: 1200,
+            }),
+            timeout: 20,
+          })
+          sentMode = 'text'
+        } catch (netErr) {
+          $app.logger().error('Evolution API HTTP sendText exception', 'error', String(netErr))
+          return e.json(502, {
+            ok: false,
+            status: 'failed',
+            error: 'Failed to communicate with Evolution API: ' + String(netErr),
+          })
+        }
       }
 
       var evoOk = evoRes && (evoRes.statusCode === 200 || evoRes.statusCode === 201)
@@ -201,9 +266,9 @@
         msgRecord.set('remote_jid', remoteJid)
         msgRecord.set('message_id', messageId)
         msgRecord.set('direction', 'out')
-        msgRecord.set('body', text)
-        msgRecord.set('type', 'text')
-        msgRecord.set('caption', text)
+        msgRecord.set('body', messageContent)
+        msgRecord.set('type', sentMode === 'media' ? mediaType || 'image' : 'text')
+        msgRecord.set('caption', messageContent)
         msgRecord.set('sent_at', new Date().toISOString())
         if (body.event) {
           msgRecord.set('automation_type', 'crm_' + String(body.event))
@@ -218,6 +283,7 @@
         ok: true,
         messageId: messageId,
         status: 'sent',
+        mode: sentMode,
       })
     },
     $apis.bodyLimit(5 * 1024 * 1024),

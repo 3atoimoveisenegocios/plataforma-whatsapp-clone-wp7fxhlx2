@@ -139,16 +139,33 @@ export const CATEGORY_VISUALS: Record<ProposalCardCategory, CategoryVisual> = {
   },
 }
 
-export const WHATSAPP_FOOTER = `https://portaldocliente.3atoimoveis.com.br/
+export const WHATSAPP_FOOTER = `LINK DO PORTAL: https://portaldocliente.3atoimoveis.com.br/
 
 Para dúvidas fale com a gente nos canais abaixo:
 
 (11) 4422-7729 ( Tel e Whatsapp )
 Email: atendimento@3atoimoveis.com.br / 3atoimoveis@gmail.com`
 
-export function formatWhatsAppMessage(cardText: string): string {
+// Mapeamento de imagens públicas estáveis por categoria do card
+export const CATEGORY_COVER_IMAGES: Record<ProposalCardCategory, string> = {
+  proposta_enviada:
+    'https://img.usecurling.com/p/800/400?q=envelope%20letter%20proposal&color=blue',
+  contraproposta:
+    'https://img.usecurling.com/p/800/400?q=handshake%20negotiation%20agreement&color=amber',
+  aceite: 'https://img.usecurling.com/p/800/400?q=handshake%20approved%20success&color=green',
+  recusa: 'https://img.usecurling.com/p/800/400?q=contract%20declined%20review&color=red',
+  contrato_preparacao:
+    'https://img.usecurling.com/p/800/400?q=contract%20document%20desk&color=cyan',
+  contrato_conferencia:
+    'https://img.usecurling.com/p/800/400?q=document%20checklist%20inspection&color=teal',
+  assinatura: 'https://img.usecurling.com/p/800/400?q=signature%20fountain%20pen&color=purple',
+  finalizacao: 'https://img.usecurling.com/p/800/400?q=celebration%20trophy%20keys&color=magenta',
+}
+
+export function formatWhatsAppMessage(cardText: string, cardTitle?: string): string {
   const trimmed = cardText.trimEnd()
-  return `${trimmed}\n\n${WHATSAPP_FOOTER}`
+  const header = cardTitle ? `*${cardTitle.trim()}*\n\n` : ''
+  return `${header}${trimmed}\n\n${WHATSAPP_FOOTER}`
 }
 
 interface ProposalMessageCard {
@@ -385,14 +402,14 @@ export default function Proposals() {
     (selectedContact?.remote_jid ? selectedContact.remote_jid.replace(/@.*$/, '') : '')
   const normalizedPhone = normalizePhoneNumber(rawPhone) || rawPhone?.replace(/\D/g, '')
 
-  const handleCopyText = async (cardId: string, text: string) => {
+  const handleCopyText = async (cardId: string, text: string, title: string) => {
     try {
-      const fullMessage = formatWhatsAppMessage(text)
+      const fullMessage = formatWhatsAppMessage(text, title)
       await navigator.clipboard.writeText(fullMessage)
       setCopiedCardId(cardId)
       toast({
         title: 'Texto copiado!',
-        description: 'Mensagem completa com rodapé copiada para a área de transferência.',
+        description: 'Mensagem completa com título em negrito e rodapé copiada.',
       })
       setTimeout(() => {
         setCopiedCardId(null)
@@ -428,17 +445,28 @@ export default function Proposals() {
     }))
 
     try {
-      const fullMessage = formatWhatsAppMessage(card.text)
-      const response = await pb.send<{ ok?: boolean; messageId?: string; error?: string }>(
-        '/backend/v1/whatsapp/send',
-        {
-          method: 'POST',
-          body: {
-            to: normalizedPhone,
-            text: fullMessage,
-          },
+      const fullMessage = formatWhatsAppMessage(card.text, card.title)
+      const coverImage =
+        CATEGORY_COVER_IMAGES[card.category] || CATEGORY_COVER_IMAGES.proposta_enviada
+
+      const response = await pb.send<{
+        ok?: boolean
+        messageId?: string
+        error?: string
+        mode?: 'media' | 'text'
+      }>('/backend/v1/whatsapp/send', {
+        method: 'POST',
+        body: {
+          to: normalizedPhone,
+          text: fullMessage,
+          caption: fullMessage,
+          media_url: coverImage,
+          media_type: 'image',
+          mime_type: 'image/jpeg',
+          file_name: `${card.category}.jpg`,
+          event: card.category,
         },
-      )
+      })
 
       if (response && response.ok === false) {
         throw new Error(response.error || 'Erro desconhecido ao enviar mensagem')
@@ -659,7 +687,7 @@ export default function Proposals() {
                           variant="ghost"
                           size="icon"
                           className="h-8 w-8 text-zinc-400 hover:text-zinc-700 shrink-0"
-                          onClick={() => handleCopyText(card.id, card.text)}
+                          onClick={() => handleCopyText(card.id, card.text, card.title)}
                           title="Copiar texto com rodapé"
                         >
                           {isCopied ? (
