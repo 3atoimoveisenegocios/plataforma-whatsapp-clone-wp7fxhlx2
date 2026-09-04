@@ -45,16 +45,67 @@ routerAdd(
       )
 
     var res
+    var isInternalSkipDomain = portalUrl.indexOf('.internal.goskip.dev') !== -1
+
     try {
-      res = $http.send({
-        url: targetUrl,
-        method: 'GET',
-        headers: {
-          Authorization: 'Bearer ' + portalToken,
-          Accept: 'application/json',
-        },
-        timeout: 20,
-      })
+      if (isInternalSkipDomain) {
+        try {
+          var curlCmd = $os.cmd(
+            'curl',
+            '-k',
+            '-s',
+            '--max-time',
+            '20',
+            '-H',
+            'Authorization: Bearer ' + portalToken,
+            '-H',
+            'Accept: application/json',
+            '-w',
+            '\n%{http_code}',
+            targetUrl,
+          )
+          var outBytes = curlCmd.output()
+          var rawOut = toString(outBytes)
+          var lastNewline = rawOut.lastIndexOf('\n')
+          var bodyStr = lastNewline !== -1 ? rawOut.substring(0, lastNewline) : rawOut
+          var statusStr = lastNewline !== -1 ? rawOut.substring(lastNewline + 1).trim() : '200'
+          var statusCode = parseInt(statusStr, 10) || 200
+
+          var parsedJson = null
+          try {
+            parsedJson = JSON.parse(bodyStr)
+          } catch (_) {}
+
+          res = {
+            statusCode: statusCode,
+            json: parsedJson,
+            raw: bodyStr,
+          }
+        } catch (curlErr) {
+          $app
+            .logger()
+            .warn('curl command failed, falling back to $http.send', 'error', String(curlErr))
+          res = $http.send({
+            url: targetUrl,
+            method: 'GET',
+            headers: {
+              Authorization: 'Bearer ' + portalToken,
+              Accept: 'application/json',
+            },
+            timeout: 20,
+          })
+        }
+      } else {
+        res = $http.send({
+          url: targetUrl,
+          method: 'GET',
+          headers: {
+            Authorization: 'Bearer ' + portalToken,
+            Accept: 'application/json',
+          },
+          timeout: 20,
+        })
+      }
     } catch (netErr) {
       $app.logger().error('Negotiations feed HTTP error', 'error', String(netErr))
       return e.json(502, {
@@ -77,6 +128,13 @@ routerAdd(
     }
 
     var data = res.json || {}
+    $app
+      .logger()
+      .info(
+        'Negotiations feed successfully fetched from portal (200 OK)',
+        'count',
+        (data.negotiations ? data.negotiations.length : data.count) || 0,
+      )
     return e.json(200, data)
   },
   $apis.requireAuth(),
