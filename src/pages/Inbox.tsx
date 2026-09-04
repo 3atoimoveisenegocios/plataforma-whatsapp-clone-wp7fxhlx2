@@ -63,7 +63,6 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PropertyCatalog } from '@/components/inbox/PropertyCatalog'
-import { ProposalsCatalog } from '@/components/inbox/ProposalsCatalog'
 import { ContactTags } from '@/components/inbox/ContactTags'
 import { TagsInput } from '@/components/inbox/TagsInput'
 import type { Property } from '@/services/properties'
@@ -842,9 +841,6 @@ export default function Inbox() {
               <TabsTrigger value="imoveis" className="flex-1 text-xs">
                 Imóveis
               </TabsTrigger>
-              <TabsTrigger value="propostas" className="flex-1 text-xs">
-                Propostas
-              </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -1008,15 +1004,10 @@ export default function Inbox() {
               )}
             </ScrollArea>
           </>
-        ) : activeTab === 'imoveis' ? (
+        ) : (
           <PropertyCatalog
             onSendProperty={handleSendProperty}
             hasSelectedContact={!!selectedContact}
-          />
-        ) : (
-          <ProposalsCatalog
-            hasSelectedContact={!!selectedContact}
-            currentSelectedContact={selectedContact}
           />
         )}
       </div>
