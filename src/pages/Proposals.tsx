@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   FileText,
   Send,
@@ -16,6 +16,8 @@ import {
   FileCheck,
   PenTool,
   Trophy,
+  Search,
+  X,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { ContactSelector } from '@/components/inbox/ContactSelector'
@@ -24,6 +26,7 @@ import pb from '@/lib/pocketbase/client'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
 import { toast } from '@/hooks/use-toast'
 
 export type ProposalCardCategory =
@@ -146,21 +149,25 @@ Para dúvidas fale com a gente nos canais abaixo:
 (11) 4422-7729 ( Tel e Whatsapp )
 Email: atendimento@3atoimoveis.com.br / 3atoimoveis@gmail.com`
 
-// Mapeamento de imagens públicas estáveis por categoria do card
-export const CATEGORY_COVER_IMAGES: Record<ProposalCardCategory, string> = {
-  proposta_enviada:
-    'https://img.usecurling.com/p/800/400?q=envelope%20letter%20proposal&color=blue',
-  contraproposta:
-    'https://img.usecurling.com/p/800/400?q=handshake%20negotiation%20agreement&color=amber',
-  aceite: 'https://img.usecurling.com/p/800/400?q=handshake%20approved%20success&color=green',
-  recusa: 'https://img.usecurling.com/p/800/400?q=contract%20declined%20review&color=red',
-  contrato_preparacao:
-    'https://img.usecurling.com/p/800/400?q=contract%20document%20desk&color=cyan',
-  contrato_conferencia:
-    'https://img.usecurling.com/p/800/400?q=document%20checklist%20inspection&color=teal',
-  assinatura: 'https://img.usecurling.com/p/800/400?q=signature%20fountain%20pen&color=purple',
-  finalizacao: 'https://img.usecurling.com/p/800/400?q=celebration%20trophy%20keys&color=magenta',
+/** Constrói a URL direta de download/mídia do Google Drive a partir do ID */
+export function getGoogleDriveMediaUrl(driveId: string): string {
+  return `https://drive.google.com/uc?export=download&id=${driveId}`
 }
+
+/** Fallback padrão por categoria caso necessário */
+export const CATEGORY_FALLBACK_IMAGES: Record<ProposalCardCategory, string> = {
+  proposta_enviada: getGoogleDriveMediaUrl('1m_6AjhZD6Q5DKJRHCOazETD_7RnhEzNb'),
+  contraproposta: getGoogleDriveMediaUrl('1VwlgNJg0DfH2UHLbV3U_k5lcmjKtUm__'),
+  aceite: getGoogleDriveMediaUrl('1Ddrxo-XoEy4XBnTAidM2tfV24nZyWpVr'),
+  recusa: getGoogleDriveMediaUrl('1VjTDyKA335-qvyo_kq7ampzVqBu08CGC'),
+  contrato_preparacao: getGoogleDriveMediaUrl('16HwlZFJLLp4YT5fnoNYWsWxqtAq04Mpq'),
+  contrato_conferencia: getGoogleDriveMediaUrl('1Yd4GunDoxffJQaO3gfeTbWhyeVByqKNE'),
+  assinatura: getGoogleDriveMediaUrl('11J-2t6yRiyJxsptU339lcBv6zF38bn6t'),
+  finalizacao: getGoogleDriveMediaUrl('1U9zyaz18arnXudH93SNTvxNXIfwNv63H'),
+}
+
+// Mantido para compatibilidade retroativa com eventuais imports
+export const CATEGORY_COVER_IMAGES: Record<ProposalCardCategory, string> = CATEGORY_FALLBACK_IMAGES
 
 export function formatWhatsAppMessage(cardText: string, cardTitle?: string): string {
   const trimmed = cardText.trimEnd()
@@ -168,14 +175,15 @@ export function formatWhatsAppMessage(cardText: string, cardTitle?: string): str
   return `${header}${trimmed}\n\n${WHATSAPP_FOOTER}`
 }
 
-interface ProposalMessageCard {
+export interface ProposalMessageCard {
   id: string
   title: string
   text: string
   category: ProposalCardCategory
+  mediaUrl: string
 }
 
-interface ProposalSection {
+export interface ProposalSection {
   id: string
   title: string
   subtitle: string
@@ -184,7 +192,7 @@ interface ProposalSection {
   cards: ProposalMessageCard[]
 }
 
-const SECTIONS: ProposalSection[] = [
+export const SECTIONS: ProposalSection[] = [
   {
     id: 'cliente_negociacoes',
     title: 'CLIENTE — NEGOCIAÇÕES',
@@ -196,24 +204,28 @@ const SECTIONS: ProposalSection[] = [
         id: 'cn-1',
         title: 'Proposta enviada ao proprietário',
         category: 'proposta_enviada',
+        mediaUrl: getGoogleDriveMediaUrl('1m_6AjhZD6Q5DKJRHCOazETD_7RnhEzNb'),
         text: 'Olá! Sua proposta foi encaminhada ao proprietário. Por gentileza, aguarde. Em breve retornaremos com novidades sobre a negociação.',
       },
       {
         id: 'cn-aceita',
         title: 'Proposta aceita pelo proprietário',
         category: 'aceite',
+        mediaUrl: getGoogleDriveMediaUrl('1Ddrxo-XoEy4XBnTAidM2tfV24nZyWpVr'),
         text: 'Olá Temos novidades sobre sua Proposta! O proprietário analisou sua proposta e aceitou as condições, por favor no Portal , vá em Negociações e veja a movimentação, logo encaminharemos as próximas etapas.',
       },
       {
         id: 'cn-recusada',
         title: 'Proposta recusada pelo proprietário',
         category: 'recusa',
+        mediaUrl: getGoogleDriveMediaUrl('1VjTDyKA335-qvyo_kq7ampzVqBu08CGC'),
         text: 'Olá Temos novidades sobre sua Proposta! O proprietário analisou sua proposta e recusou as condições, por favor no Portal , vá em Negociações e veja a movimentação, para mais informações entre em contato com a gente no telefone (11) 4422-7729, ou pelo Whatsapp neste mesmo número.',
       },
       {
         id: 'cn-2',
         title: 'Proprietário fez uma contraproposta',
         category: 'contraproposta',
+        mediaUrl: getGoogleDriveMediaUrl('1VwlgNJg0DfH2UHLbV3U_k5lcmjKtUm__'),
         text: `Olá! Temos novidades sobre sua proposta. O proprietário analisou sua proposta e enviou uma contraproposta.
 
 Por gentileza, acesse nosso portal, vá até Negociações e verifique a movimentação.`,
@@ -222,6 +234,7 @@ Por gentileza, acesse nosso portal, vá até Negociações e verifique a movimen
         id: 'cn-4',
         title: 'Contraproposta do cliente recusada pelo proprietário',
         category: 'recusa',
+        mediaUrl: getGoogleDriveMediaUrl('1x_Y4FijUKrrTdWpWuGRtxiptDqTO-UuM'),
         text: `Olá! Infelizmente, o proprietário analisou sua contraproposta e não a aceitou.
 
 Para mais informações, entre em contato conosco pelo telefone (11) 4422-7729 ou envie uma mensagem por aqui.`,
@@ -230,6 +243,7 @@ Para mais informações, entre em contato conosco pelo telefone (11) 4422-7729 o
         id: 'cn-6',
         title: 'Sua contraproposta foi aceita pelo proprietário',
         category: 'aceite',
+        mediaUrl: getGoogleDriveMediaUrl('1MwRWAEm08LdOAK0ZV8vwCrsyxrF7-q1A'),
         text: `Olá! Sua contraproposta foi aceita pelo proprietário. A negociação avançou para a próxima etapa.
 
 Por gentileza, acesse Negociações para acompanhar a movimentação.`,
@@ -238,6 +252,7 @@ Por gentileza, acesse Negociações para acompanhar a movimentação.`,
         id: 'cn-7',
         title: 'Proprietário aceitou a contraproposta do cliente',
         category: 'aceite',
+        mediaUrl: getGoogleDriveMediaUrl('1MwRWAEm08LdOAK0ZV8vwCrsyxrF7-q1A'),
         text: `Olá! Temos ótimas novidades! O proprietário aceitou sua contraproposta.
 
 Por gentileza, acesse nosso portal, vá até Negociações e verifique a movimentação.`,
@@ -246,6 +261,7 @@ Por gentileza, acesse nosso portal, vá até Negociações e verifique a movimen
         id: 'cn-8',
         title: 'Contrato em preparação',
         category: 'contrato_preparacao',
+        mediaUrl: getGoogleDriveMediaUrl('16HwlZFJLLp4YT5fnoNYWsWxqtAq04Mpq'),
         text: `Olá! Temos novidades! Estamos preparando seu contrato para assinatura.
 
 Por gentileza, acesse nosso portal, vá até Negociações e acompanhe a movimentação.`,
@@ -254,6 +270,7 @@ Por gentileza, acesse nosso portal, vá até Negociações e acompanhe a movimen
         id: 'cn-9',
         title: 'Contrato pronto para conferência',
         category: 'contrato_conferencia',
+        mediaUrl: getGoogleDriveMediaUrl('1Yd4GunDoxffJQaO3gfeTbWhyeVByqKNE'),
         text: `Olá! Temos novidades! Seu contrato está pronto para conferência.
 
 Por gentileza, acesse Negociações, entre em Contrato Finalizado, identificado pela cor verde, e clique em Visualizar PDF do Contrato para realizar a conferência.
@@ -264,6 +281,7 @@ Estando tudo correto, avançaremos para a assinatura.`,
         id: 'cn-10',
         title: 'Contrato pronto para assinatura',
         category: 'assinatura',
+        mediaUrl: getGoogleDriveMediaUrl('11J-2t6yRiyJxsptU339lcBv6zF38bn6t'),
         text: `Olá! Temos novidades! Seu contrato está pronto para assinatura.
 
 Por gentileza, acesse Negociações e clique em Assinar na D4Sign, identificado pela cor laranja. Você será redirecionado para realizar a assinatura do contrato.`,
@@ -281,24 +299,28 @@ Por gentileza, acesse Negociações e clique em Assinar na D4Sign, identificado 
         id: 'pmp-1',
         title: 'Proposta enviada ao cliente',
         category: 'proposta_enviada',
+        mediaUrl: getGoogleDriveMediaUrl('17e-X5B9eUe_Q-N0BUbrOq7aBbIrnZzJB'),
         text: 'Olá! Sua proposta foi encaminhada ao cliente. Por gentileza, aguarde. Em breve retornaremos com novidades sobre a negociação.',
       },
       {
         id: 'pmp-aceita',
         title: 'Proposta aceita pelo cliente',
         category: 'aceite',
+        mediaUrl: getGoogleDriveMediaUrl('11uBrKOc6LOxfjyaB6HIiEPk0vtzc3is_'),
         text: 'Olá Temos novidades sobre sua Proposta! O cliente analisou sua proposta e aceitou as condições, por favor no Portal vá em Minhas Propostas e veja a movimentação, logo encaminharemos as próximas etapas.',
       },
       {
         id: 'pmp-recusada',
         title: 'Proposta recusada pelo cliente',
         category: 'recusa',
+        mediaUrl: getGoogleDriveMediaUrl('1zFeDyVM_9QddaLujFRMeKfEKJQnxObWX'),
         text: 'Olá Temos novidades sobre sua Proposta! O cliente analisou sua proposta e recusou as condições, por favor no Portal , vá em Minhas Propostas e veja a movimentação, para mais informações entre em contato com a gente no telefone (11) 4422-7729, ou pelo Whatsapp neste mesmo número.',
       },
       {
         id: 'pmp-2',
         title: 'Cliente fez uma contraproposta',
         category: 'contraproposta',
+        mediaUrl: getGoogleDriveMediaUrl('1hJTH0Vp_s4e53FyBsEeGrusC0sL0A91_'),
         text: `Olá! Temos novidades sobre sua proposta. O cliente analisou sua proposta e enviou uma contraproposta.
 
 Por gentileza, acesse nosso portal, vá até Minhas Propostas e verifique a movimentação.`,
@@ -307,6 +329,7 @@ Por gentileza, acesse nosso portal, vá até Minhas Propostas e verifique a movi
         id: 'pmp-4',
         title: 'Contraproposta do proprietário recusada pelo cliente',
         category: 'recusa',
+        mediaUrl: getGoogleDriveMediaUrl('1_F4oHZAzXs2XuDMuQX97oL0oNB1j36QZ'),
         text: `Olá! Infelizmente, o cliente analisou sua contraproposta e não a aceitou.
 
 Para mais informações, entre em contato conosco pelo telefone (11) 4422-7729 ou envie uma mensagem por aqui.`,
@@ -315,6 +338,7 @@ Para mais informações, entre em contato conosco pelo telefone (11) 4422-7729 o
         id: 'pmp-6',
         title: 'Cliente aceitou a contraproposta',
         category: 'aceite',
+        mediaUrl: getGoogleDriveMediaUrl('1BA-kAZ1zDUJJgR2LmyX2f35CY8BcG8s5'),
         text: `Olá! Temos ótimas novidades! O cliente aceitou sua contraproposta.
 
 Por gentileza, acesse nosso portal, vá até Minhas Propostas e verifique a movimentação.`,
@@ -323,6 +347,7 @@ Por gentileza, acesse nosso portal, vá até Minhas Propostas e verifique a movi
         id: 'pmp-7',
         title: 'Sua contraproposta foi aceita pelo cliente',
         category: 'aceite',
+        mediaUrl: getGoogleDriveMediaUrl('1BA-kAZ1zDUJJgR2LmyX2f35CY8BcG8s5'),
         text: `Olá! Sua contraproposta foi aceita pelo cliente. A negociação avançou para a próxima etapa.
 
 Por gentileza, acesse Minhas Propostas para acompanhar a movimentação.`,
@@ -331,6 +356,7 @@ Por gentileza, acesse Minhas Propostas para acompanhar a movimentação.`,
         id: 'pmp-8',
         title: 'Contrato em preparação',
         category: 'contrato_preparacao',
+        mediaUrl: getGoogleDriveMediaUrl('16HwlZFJLLp4YT5fnoNYWsWxqtAq04Mpq'),
         text: `Olá! Temos novidades! Estamos preparando seu contrato para assinatura.
 
 Por gentileza, acesse nosso portal, vá até Minhas Propostas e acompanhe a movimentação.`,
@@ -339,6 +365,7 @@ Por gentileza, acesse nosso portal, vá até Minhas Propostas e acompanhe a movi
         id: 'pmp-9',
         title: 'Contrato pronto para conferência',
         category: 'contrato_conferencia',
+        mediaUrl: getGoogleDriveMediaUrl('1Yd4GunDoxffJQaO3gfeTbWhyeVByqKNE'),
         text: `Olá! Temos novidades! Seu contrato está pronto para conferência.
 
 Por gentileza, acesse Minhas Propostas, entre em Contrato Finalizado, identificado pela cor verde, e clique em Visualizar Contrato PDF para realizar a conferência.
@@ -349,6 +376,7 @@ Estando tudo correto, avançaremos para a assinatura.`,
         id: 'pmp-10',
         title: 'Contrato pronto para assinatura',
         category: 'assinatura',
+        mediaUrl: getGoogleDriveMediaUrl('11J-2t6yRiyJxsptU339lcBv6zF38bn6t'),
         text: `Olá! Temos novidades! Seu contrato está pronto para assinatura.
 
 Por gentileza, acesse Minhas Propostas e clique em Assinar na D4Sign, identificado pela cor laranja. Você será redirecionado para realizar a assinatura do contrato.`,
@@ -366,6 +394,7 @@ Por gentileza, acesse Minhas Propostas e clique em Assinar na D4Sign, identifica
         id: 'fin-1',
         title: 'Contrato assinado',
         category: 'finalizacao',
+        mediaUrl: getGoogleDriveMediaUrl('1U9zyaz18arnXudH93SNTvxNXIfwNv63H'),
         text: `🎉 Contrato assinado com sucesso! Parabéns!
 
 Agradecemos pela confiança. O contrato foi assinado por todas as partes e a negociação avançou para a etapa final.`,
@@ -374,6 +403,7 @@ Agradecemos pela confiança. O contrato foi assinado por todas as partes e a neg
         id: 'fin-2',
         title: 'Contrato finalizado',
         category: 'finalizacao',
+        mediaUrl: getGoogleDriveMediaUrl('17bUv-BJ2BzGpRQHVlpTzTTJgwpK_YyhM'),
         text: `🎉 Contrato finalizado com sucesso!
 
 Parabéns! Todo o processo foi concluído com sucesso. Agradecemos pela confiança!`,
@@ -384,6 +414,7 @@ Parabéns! Todo o processo foi concluído com sucesso. Agradecemos pela confian�
 
 export default function Proposals() {
   const [selectedContact, setSelectedContact] = useState<any | null>(null)
+  const [searchTerm, setSearchTerm] = useState('')
   const [sendingCardId, setSendingCardId] = useState<string | null>(null)
   const [statusMap, setStatusMap] = useState<
     Record<
@@ -401,6 +432,28 @@ export default function Proposals() {
     selectedContact?.phone ||
     (selectedContact?.remote_jid ? selectedContact.remote_jid.replace(/@.*$/, '') : '')
   const normalizedPhone = normalizePhoneNumber(rawPhone) || rawPhone?.replace(/\D/g, '')
+
+  // Filtragem dos cards em tempo real por título ou texto da mensagem
+  const filteredSections = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase()
+    if (!term) return SECTIONS
+
+    return SECTIONS.map((section) => {
+      const matchingCards = section.cards.filter((card) => {
+        const titleMatch = card.title.toLowerCase().includes(term)
+        const textMatch = card.text.toLowerCase().includes(term)
+        return titleMatch || textMatch
+      })
+      return {
+        ...section,
+        cards: matchingCards,
+      }
+    }).filter((section) => section.cards.length > 0)
+  }, [searchTerm])
+
+  const totalMatchingCards = useMemo(() => {
+    return filteredSections.reduce((acc, s) => acc + s.cards.length, 0)
+  }, [filteredSections])
 
   const handleCopyText = async (cardId: string, text: string, title: string) => {
     try {
@@ -446,8 +499,8 @@ export default function Proposals() {
 
     try {
       const fullMessage = formatWhatsAppMessage(card.text, card.title)
-      const coverImage =
-        CATEGORY_COVER_IMAGES[card.category] || CATEGORY_COVER_IMAGES.proposta_enviada
+      // Cada card usa a imagem específica do seu título via link direto do Google Drive
+      const coverImage = card.mediaUrl || CATEGORY_FALLBACK_IMAGES[card.category]
 
       const response = await pb.send<{
         ok?: boolean
@@ -575,6 +628,44 @@ export default function Proposals() {
               )}
             </div>
           </div>
+
+          {/* Search / Filter Input */}
+          <div className="mt-4 pt-3 border-t border-zinc-100 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="relative flex-1 max-w-xl">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-400 pointer-events-none" />
+              <Input
+                type="text"
+                placeholder="Buscar por título ou mensagem (ex: contraproposta, aceita, contrato, D4Sign)..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9 pr-9 h-9.5 bg-zinc-50/80 border-zinc-200 text-sm focus-visible:ring-violet-500/30 focus-visible:ring-offset-0 focus-visible:border-violet-400 transition-colors"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 h-5 w-5 rounded-full flex items-center justify-center text-zinc-400 hover:text-zinc-600 hover:bg-zinc-200/60 transition-colors"
+                  title="Limpar busca"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-zinc-500 self-end sm:self-auto shrink-0">
+              {searchTerm ? (
+                <span className="font-medium text-violet-700 bg-violet-50 px-2.5 py-1 rounded-full border border-violet-200/60">
+                  {totalMatchingCards}{' '}
+                  {totalMatchingCards === 1 ? 'card encontrado' : 'cards encontrados'} em{' '}
+                  {filteredSections.length} {filteredSections.length === 1 ? 'seção' : 'seções'}
+                </span>
+              ) : (
+                <span className="text-zinc-400">
+                  Total de {totalMatchingCards} mensagens disponíveis
+                </span>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -594,163 +685,188 @@ export default function Proposals() {
           </div>
         )}
 
-        {SECTIONS.map((section) => {
-          const SectionIcon = section.icon
-          return (
-            <section key={section.id} className="space-y-4">
-              {/* Section Header */}
-              <div className="border-b border-zinc-200/80 pb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                <div className="flex items-center gap-2.5">
-                  <div className="h-8 w-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-700">
-                    <SectionIcon className="h-4 w-4 text-violet-600" />
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h2 className="text-base font-bold tracking-tight text-zinc-900">
-                        {section.title}
-                      </h2>
-                      <Badge variant="outline" className={section.badgeColor}>
-                        {section.cards.length} mensagens
-                      </Badge>
+        {filteredSections.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-12 text-center rounded-2xl border border-dashed border-zinc-200 bg-white">
+            <div className="h-12 w-12 rounded-full bg-violet-50 flex items-center justify-center mb-3">
+              <Search className="h-5 w-5 text-violet-500" />
+            </div>
+            <h3 className="text-base font-semibold text-zinc-900">Nenhuma mensagem encontrada</h3>
+            <p className="text-xs text-zinc-500 mt-1 max-w-sm">
+              Não encontramos nenhum card com o termo &ldquo;{searchTerm}&rdquo; no título ou no
+              texto.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-4 text-xs font-medium border-violet-200 text-violet-700 hover:bg-violet-50"
+              onClick={() => setSearchTerm('')}
+            >
+              Limpar filtro de busca
+            </Button>
+          </div>
+        ) : (
+          filteredSections.map((section) => {
+            const SectionIcon = section.icon
+            return (
+              <section key={section.id} className="space-y-4">
+                {/* Section Header */}
+                <div className="border-b border-zinc-200/80 pb-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="h-8 w-8 rounded-lg bg-zinc-100 flex items-center justify-center text-zinc-700">
+                      <SectionIcon className="h-4 w-4 text-violet-600" />
                     </div>
-                    <p className="text-xs text-zinc-500 mt-0.5">{section.subtitle}</p>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h2 className="text-base font-bold tracking-tight text-zinc-900">
+                          {section.title}
+                        </h2>
+                        <Badge variant="outline" className={section.badgeColor}>
+                          {section.cards.length}{' '}
+                          {section.cards.length === 1 ? 'mensagem' : 'mensagens'}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-zinc-500 mt-0.5">{section.subtitle}</p>
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Cards Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
-                {section.cards.map((card, index) => {
-                  const isSending = sendingCardId === card.id
-                  const cardStatus = statusMap[card.id]
-                  const hasContact = Boolean(selectedContact && normalizedPhone)
-                  const isCopied = copiedCardId === card.id
+                {/* Cards Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4">
+                  {section.cards.map((card, index) => {
+                    const isSending = sendingCardId === card.id
+                    const cardStatus = statusMap[card.id]
+                    const hasContact = Boolean(selectedContact && normalizedPhone)
+                    const isCopied = copiedCardId === card.id
 
-                  const visual =
-                    CATEGORY_VISUALS[card.category] || CATEGORY_VISUALS.proposta_enviada
-                  const VisualIcon = visual.icon
+                    const visual =
+                      CATEGORY_VISUALS[card.category] || CATEGORY_VISUALS.proposta_enviada
+                    const VisualIcon = visual.icon
 
-                  return (
-                    <Card
-                      key={card.id}
-                      className="group border-zinc-200/80 bg-white hover:border-violet-300 hover:shadow-md transition-all duration-200 shadow-xs flex flex-col justify-between overflow-hidden"
-                    >
-                      {/* Top Visual Header / Cover Image */}
-                      <div
-                        className={`relative h-24 w-full bg-gradient-to-r ${visual.bannerGradient} p-3.5 flex items-end justify-between overflow-hidden select-none`}
+                    return (
+                      <Card
+                        key={card.id}
+                        className="group border-zinc-200/80 bg-white hover:border-violet-300 hover:shadow-md transition-all duration-200 shadow-xs flex flex-col justify-between overflow-hidden"
                       >
-                        {/* Decorative pattern overlays */}
-                        <div
-                          className="absolute inset-0 opacity-15 mix-blend-overlay pointer-events-none"
-                          style={{
-                            backgroundImage:
-                              'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
-                            backgroundSize: '12px 12px',
-                          }}
-                        />
-                        <div className="absolute -right-6 -bottom-8 opacity-20 pointer-events-none text-white transform rotate-12">
-                          <VisualIcon className="h-32 w-32" />
-                        </div>
+                        {/* Top Cover Image from Google Drive with graceful visual gradient fallback */}
+                        <div className="relative h-36 w-full bg-zinc-100 overflow-hidden select-none border-b border-zinc-100">
+                          {/* Image */}
+                          <img
+                            src={card.mediaUrl}
+                            alt={card.title}
+                            loading="lazy"
+                            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                            onError={(e) => {
+                              // Se a imagem remota falhar no navegador do admin, esconde a tag img deixando o banner visível
+                              const target = e.currentTarget
+                              target.style.display = 'none'
+                            }}
+                          />
 
-                        {/* Top-left category badge */}
-                        <div className="relative z-10 flex items-center gap-2">
-                          <div
-                            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${visual.iconBg} shadow-sm transition-transform duration-200 group-hover:scale-105`}
-                          >
-                            <VisualIcon className="h-5 w-5" />
+                          {/* Subtle overlay gradient to ensure badge legibility */}
+                          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-black/30 pointer-events-none" />
+
+                          {/* Fallback decorative background icon if image is loading or hidden */}
+                          <div className="absolute -right-4 -bottom-6 opacity-15 pointer-events-none text-white transform rotate-12">
+                            <VisualIcon className="h-28 w-28" />
                           </div>
-                          <div>
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-semibold tracking-wide uppercase bg-black/25 text-white/95 backdrop-blur-xs border border-white/20">
-                              {visual.label}
-                            </span>
-                            <div className="text-[11px] text-white/80 font-medium mt-0.5">
-                              Etapa #{index + 1}
+
+                          {/* Top-left category badge */}
+                          <div className="absolute bottom-2.5 left-3 z-10 flex items-center gap-2">
+                            <div
+                              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${visual.iconBg} shadow-sm backdrop-blur-md`}
+                            >
+                              <VisualIcon className="h-4 w-4" />
+                            </div>
+                            <div>
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold tracking-wide uppercase bg-black/60 text-white backdrop-blur-md border border-white/20">
+                                {visual.label}
+                              </span>
                             </div>
                           </div>
-                        </div>
 
-                        {/* Top-right subtle card index badge */}
-                        <div className="relative z-10 flex items-center">
-                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 backdrop-blur-xs text-[11px] font-bold text-white border border-white/30">
-                            {index + 1}
-                          </span>
-                        </div>
-                      </div>
-
-                      <CardHeader className="pb-2.5 pt-3.5 px-4 border-b border-zinc-100 flex flex-row items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <CardTitle className="text-sm font-semibold text-zinc-900 leading-snug line-clamp-2">
-                            {card.title}
-                          </CardTitle>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-zinc-400 hover:text-zinc-700 shrink-0"
-                          onClick={() => handleCopyText(card.id, card.text, card.title)}
-                          title="Copiar texto com rodapé"
-                        >
-                          {isCopied ? (
-                            <Check className="h-4 w-4 text-emerald-600" />
-                          ) : (
-                            <Copy className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </CardHeader>
-
-                      <CardContent className="pt-3 px-4 pb-3 flex-1 flex flex-col justify-between">
-                        <div>
-                          <div className="bg-zinc-50/90 rounded-lg p-3 border border-zinc-100/90 text-[13px] text-zinc-700 whitespace-pre-wrap font-sans leading-relaxed">
-                            {card.text}
-                          </div>
-
-                          {/* Subtle hint that footer is appended on send/copy */}
-                          <div className="mt-2 text-[11px] text-zinc-400 flex items-center gap-1.5 px-0.5">
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500/80 inline-block" />
-                            <span>Rodapé com links e canais de atendimento anexado no envio</span>
-                          </div>
-                        </div>
-
-                        {/* Status feedback message */}
-                        {cardStatus?.state === 'success' && (
-                          <div className="mt-2.5 flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-md border border-emerald-200/70 animate-in fade-in duration-200">
-                            <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                            <span>{cardStatus.message || 'Enviado ✓'}</span>
-                          </div>
-                        )}
-
-                        {cardStatus?.state === 'error' && (
-                          <div className="mt-2.5 flex items-start gap-1.5 text-xs text-red-700 bg-red-50 p-2 rounded-md border border-red-200/70 animate-in fade-in duration-200">
-                            <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
-                            <span className="flex-1 break-words">
-                              {cardStatus.message || 'Erro ao enviar. Tente novamente.'}
+                          {/* Top-right subtle card index badge */}
+                          <div className="absolute top-2.5 right-3 z-10 flex items-center">
+                            <span className="flex h-6 w-6 items-center justify-center rounded-full bg-black/50 backdrop-blur-md text-[10.5px] font-bold text-white border border-white/30">
+                              {index + 1}
                             </span>
                           </div>
-                        )}
-                      </CardContent>
+                        </div>
 
-                      <CardFooter className="pt-2 px-4 pb-3 border-t border-zinc-100 bg-zinc-50/40">
-                        <Button
-                          size="sm"
-                          className="w-full text-xs font-medium h-9 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 transition-colors shadow-xs"
-                          onClick={() => handleSendMessage(card)}
-                          disabled={!hasContact || isSending}
-                        >
-                          <Send className="h-3.5 w-3.5 mr-1.5" />
-                          {isSending
-                            ? 'Disparando...'
-                            : hasContact
-                              ? 'Enviar no WhatsApp'
-                              : 'Selecione um contato primeiro'}
-                        </Button>
-                      </CardFooter>
-                    </Card>
-                  )
-                })}
-              </div>
-            </section>
-          )
-        })}
+                        <CardHeader className="pb-2.5 pt-3.5 px-4 border-b border-zinc-100 flex flex-row items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <CardTitle className="text-sm font-semibold text-zinc-900 leading-snug line-clamp-2">
+                              {card.title}
+                            </CardTitle>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8 text-zinc-400 hover:text-zinc-700 shrink-0"
+                            onClick={() => handleCopyText(card.id, card.text, card.title)}
+                            title="Copiar texto com rodapé"
+                          >
+                            {isCopied ? (
+                              <Check className="h-4 w-4 text-emerald-600" />
+                            ) : (
+                              <Copy className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </CardHeader>
+
+                        <CardContent className="pt-3 px-4 pb-3 flex-1 flex flex-col justify-between">
+                          <div>
+                            <div className="bg-zinc-50/90 rounded-lg p-3 border border-zinc-100/90 text-[13px] text-zinc-700 whitespace-pre-wrap font-sans leading-relaxed">
+                              {card.text}
+                            </div>
+
+                            {/* Subtle hint that footer is appended on send/copy */}
+                            <div className="mt-2 text-[11px] text-zinc-400 flex items-center gap-1.5 px-0.5">
+                              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500/80 inline-block" />
+                              <span>Rodapé com links e canais de atendimento anexado no envio</span>
+                            </div>
+                          </div>
+
+                          {/* Status feedback message */}
+                          {cardStatus?.state === 'success' && (
+                            <div className="mt-2.5 flex items-center gap-1.5 text-xs font-semibold text-emerald-700 bg-emerald-50 px-2.5 py-1.5 rounded-md border border-emerald-200/70 animate-in fade-in duration-200">
+                              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                              <span>{cardStatus.message || 'Enviado ✓'}</span>
+                            </div>
+                          )}
+
+                          {cardStatus?.state === 'error' && (
+                            <div className="mt-2.5 flex items-start gap-1.5 text-xs text-red-700 bg-red-50 p-2 rounded-md border border-red-200/70 animate-in fade-in duration-200">
+                              <AlertCircle className="h-4 w-4 text-red-600 shrink-0 mt-0.5" />
+                              <span className="flex-1 break-words">
+                                {cardStatus.message || 'Erro ao enviar. Tente novamente.'}
+                              </span>
+                            </div>
+                          )}
+                        </CardContent>
+
+                        <CardFooter className="pt-2 px-4 pb-3 border-t border-zinc-100 bg-zinc-50/40">
+                          <Button
+                            size="sm"
+                            className="w-full text-xs font-medium h-9 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 transition-colors shadow-xs"
+                            onClick={() => handleSendMessage(card)}
+                            disabled={!hasContact || isSending}
+                          >
+                            <Send className="h-3.5 w-3.5 mr-1.5" />
+                            {isSending
+                              ? 'Disparando...'
+                              : hasContact
+                                ? 'Enviar no WhatsApp'
+                                : 'Selecione um contato primeiro'}
+                          </Button>
+                        </CardFooter>
+                      </Card>
+                    )
+                  })}
+                </div>
+              </section>
+            )
+          })
+        )}
       </div>
     </div>
   )
