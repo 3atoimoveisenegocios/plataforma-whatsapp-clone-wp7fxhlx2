@@ -39,13 +39,13 @@ const SECTIONS: ProposalSection[] = [
   {
     id: 'cliente_negociacoes',
     title: 'CLIENTE — NEGOCIAÇÕES',
-    subtitle: 'Comunicações enviadas ao cliente/comprador referente às etapas de negociação',
+    subtitle: 'Comunicações enviadas ao cliente/comprador referentes às etapas da negociação',
     icon: User,
     badgeColor: 'bg-blue-50 text-blue-700 border-blue-200',
     cards: [
       {
         id: 'cn-1',
-        title: 'Proposta enviada',
+        title: 'Proposta enviada ao proprietário',
         text: 'Olá! Sua proposta foi encaminhada ao proprietário. Por gentileza, aguarde. Em breve retornaremos com novidades sobre a negociação.',
       },
       {
@@ -56,36 +56,22 @@ const SECTIONS: ProposalSection[] = [
 Por gentileza, acesse nosso portal, vá até Negociações e verifique a movimentação.`,
       },
       {
-        id: 'cn-3',
-        title: 'Cliente fez uma contraproposta',
-        text: `Olá! Temos novidades sobre sua contraproposta. O cliente analisou sua proposta e enviou uma nova contraproposta.
-
-Por gentileza, acesse nosso portal, vá até Negociações e verifique a movimentação.`,
-      },
-      {
         id: 'cn-4',
-        title: 'Contraproposta recusada pelo cliente',
-        text: `Olá! Infelizmente, o cliente analisou sua contraproposta e não a aceitou.
-
-Para mais informações, entre em contato conosco pelo telefone (11) 4422-7729 ou envie uma mensagem por aqui.`,
-      },
-      {
-        id: 'cn-5',
-        title: 'Contraproposta recusada pelo proprietário',
+        title: 'Contraproposta do cliente recusada pelo proprietário',
         text: `Olá! Infelizmente, o proprietário analisou sua contraproposta e não a aceitou.
 
 Para mais informações, entre em contato conosco pelo telefone (11) 4422-7729 ou envie uma mensagem por aqui.`,
       },
       {
         id: 'cn-6',
-        title: 'Cliente aceitou a contraproposta',
-        text: `Olá! Temos ótimas novidades! O cliente aceitou sua contraproposta.
+        title: 'Sua contraproposta foi aceita pelo proprietário',
+        text: `Olá! Sua contraproposta foi aceita pelo proprietário. A negociação avançou para a próxima etapa.
 
-Por gentileza, acesse nosso portal, vá até Negociações e verifique a movimentação.`,
+Por gentileza, acesse Negociações para acompanhar a movimentação.`,
       },
       {
         id: 'cn-7',
-        title: 'Proprietário aceitou a contraproposta',
+        title: 'Proprietário aceitou a contraproposta do cliente',
         text: `Olá! Temos ótimas novidades! O proprietário aceitou sua contraproposta.
 
 Por gentileza, acesse nosso portal, vá até Negociações e verifique a movimentação.`,
@@ -118,13 +104,13 @@ Por gentileza, acesse Negociações e clique em Assinar na D4Sign, identificado 
   {
     id: 'proprietario_minhas_propostas',
     title: 'PROPRIETÁRIO — MINHAS PROPOSTAS',
-    subtitle: 'Comunicações enviadas ao proprietário referente às etapas da negociação no portal',
+    subtitle: 'Comunicações enviadas ao proprietário referentes às etapas da negociação no portal',
     icon: Building,
     badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     cards: [
       {
         id: 'pmp-1',
-        title: 'Proposta enviada',
+        title: 'Proposta enviada ao cliente',
         text: 'Olá! Sua proposta foi encaminhada ao cliente. Por gentileza, aguarde. Em breve retornaremos com novidades sobre a negociação.',
       },
       {
@@ -135,23 +121,9 @@ Por gentileza, acesse Negociações e clique em Assinar na D4Sign, identificado 
 Por gentileza, acesse nosso portal, vá até Minhas Propostas e verifique a movimentação.`,
       },
       {
-        id: 'pmp-3',
-        title: 'Proprietário fez uma contraproposta',
-        text: `Olá! Temos novidades sobre sua contraproposta. O proprietário analisou a negociação e enviou uma nova contraproposta.
-
-Por gentileza, acesse nosso portal, vá até Minhas Propostas e verifique a movimentação.`,
-      },
-      {
         id: 'pmp-4',
-        title: 'Contraproposta recusada pelo cliente',
+        title: 'Contraproposta do proprietário recusada pelo cliente',
         text: `Olá! Infelizmente, o cliente analisou sua contraproposta e não a aceitou.
-
-Para mais informações, entre em contato conosco pelo telefone (11) 4422-7729 ou envie uma mensagem por aqui.`,
-      },
-      {
-        id: 'pmp-5',
-        title: 'Contraproposta recusada pelo proprietário',
-        text: `Olá! Infelizmente, o proprietário analisou a contraproposta e não a aceitou.
 
 Para mais informações, entre em contato conosco pelo telefone (11) 4422-7729 ou envie uma mensagem por aqui.`,
       },
@@ -164,10 +136,10 @@ Por gentileza, acesse nosso portal, vá até Minhas Propostas e verifique a movi
       },
       {
         id: 'pmp-7',
-        title: 'Proprietário aceitou a contraproposta',
-        text: `Olá! Temos ótimas novidades! O proprietário aceitou sua contraproposta.
+        title: 'Sua contraproposta foi aceita pelo cliente',
+        text: `Olá! Sua contraproposta foi aceita pelo cliente. A negociação avançou para a próxima etapa.
 
-Por gentileza, acesse nosso portal, vá até Minhas Propostas e verifique a movimentação.`,
+Por gentileza, acesse Minhas Propostas para acompanhar a movimentação.`,
       },
       {
         id: 'pmp-8',
@@ -206,14 +178,14 @@ Por gentileza, acesse Minhas Propostas e clique em Assinar na D4Sign, identifica
         title: 'Contrato assinado',
         text: `🎉 Contrato assinado com sucesso! Parabéns!
 
-Agradecemos pela confiança. Sua negociação avançou com sucesso para a próxima etapa.`,
+Agradecemos pela confiança. O contrato foi assinado por todas as partes e a negociação avançou para a etapa final.`,
       },
       {
         id: 'fin-2',
         title: 'Contrato finalizado',
         text: `🎉 Contrato finalizado com sucesso!
 
-Parabéns! Todo o processo foi concluído. Agradecemos pela confiança.`,
+Parabéns! Todo o processo foi concluído com sucesso. Agradecemos pela confiança!`,
       },
     ],
   },
