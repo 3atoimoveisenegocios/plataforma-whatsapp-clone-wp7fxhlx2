@@ -18,8 +18,22 @@ routerAdd(
     }
 
     // Get optional query params: broker and since
-    var broker = e.requestInfo().query['broker'] || ''
-    var since = e.requestInfo().query['since'] || ''
+    var broker = ''
+    var since = ''
+    try {
+      var reqInfo = e.requestInfo()
+      if (reqInfo && reqInfo.query) {
+        broker = reqInfo.query['broker'] || ''
+        since = reqInfo.query['since'] || ''
+      }
+    } catch (_) {
+      try {
+        if (e.request && e.request.url && e.request.url.query) {
+          broker = e.request.url.query().get('broker') || ''
+          since = e.request.url.query().get('since') || ''
+        }
+      } catch (_) {}
+    }
 
     var queryParts = []
     if (broker) {
@@ -44,10 +58,11 @@ routerAdd(
         since,
       )
 
-    var res
+    var res = null
     var isInternalSkipDomain = portalUrl.indexOf('.internal.goskip.dev') !== -1
 
     try {
+      // 1. For internal .internal.goskip.dev domains, attempt curl -k first to tolerate self-signed/internal certs
       if (isInternalSkipDomain) {
         try {
           var curlCmd = $os.cmd(
@@ -65,7 +80,17 @@ routerAdd(
             targetUrl,
           )
           var outBytes = curlCmd.output()
-          var rawOut = toString(outBytes)
+          var rawOut = ''
+          try {
+            if (typeof toString === 'function') {
+              rawOut = toString(outBytes)
+            } else if (outBytes) {
+              rawOut = new TextDecoder().decode(outBytes)
+            }
+          } catch (_) {
+            rawOut = String(outBytes || '')
+          }
+
           var lastNewline = rawOut.lastIndexOf('\n')
           var bodyStr = lastNewline !== -1 ? rawOut.substring(0, lastNewline) : rawOut
           var statusStr = lastNewline !== -1 ? rawOut.substring(lastNewline + 1).trim() : '200'
@@ -85,17 +110,12 @@ routerAdd(
           $app
             .logger()
             .warn('curl command failed, falling back to $http.send', 'error', String(curlErr))
-          res = $http.send({
-            url: targetUrl,
-            method: 'GET',
-            headers: {
-              Authorization: 'Bearer ' + portalToken,
-              Accept: 'application/json',
-            },
-            timeout: 20,
-          })
+          res = null
         }
-      } else {
+      }
+
+      // 2. If curl wasn't used or failed, use $http.send
+      if (!res) {
         res = $http.send({
           url: targetUrl,
           method: 'GET',
