@@ -3,14 +3,9 @@
     'POST',
     routePath,
     (e) => {
-      // 1. Bearer Token Authentication
+      // 1. Authentication (Accepts PocketBase user auth session OR Bearer WHATSAPP_API_TOKEN)
       var expectedToken =
         $secrets.get('WHATSAPP_API_TOKEN') || $os.getenv('WHATSAPP_API_TOKEN') || ''
-      if (!expectedToken) {
-        $app.logger().error('WHATSAPP_API_TOKEN secret is not configured')
-        return e.json(500, { ok: false, error: 'Server authentication configuration missing' })
-      }
-
       var authHeader =
         e.requestInfo().headers['authorization'] || e.requestInfo().headers['Authorization'] || ''
       var providedToken = ''
@@ -20,7 +15,16 @@
         providedToken = authHeader.substring(7).trim()
       }
 
-      if (!providedToken || providedToken !== expectedToken) {
+      var isTokenValid = expectedToken && providedToken === expectedToken
+      var isUserAuth = Boolean(e.auth && e.auth.id)
+
+      if (!isTokenValid && !isUserAuth) {
+        if (!expectedToken && !isUserAuth) {
+          $app
+            .logger()
+            .error('WHATSAPP_API_TOKEN secret is not configured and request has no auth user')
+          return e.json(401, { ok: false, error: 'Unauthorized: Authentication required' })
+        }
         return e.json(401, { ok: false, error: 'Unauthorized: Invalid or missing token' })
       }
 
