@@ -11,7 +11,13 @@ import {
   User,
   PartyPopper,
   Info,
+  ArrowRightLeft,
+  XCircle,
+  FileCheck,
+  PenTool,
+  Trophy,
 } from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 import { ContactSelector } from '@/components/inbox/ContactSelector'
 import { normalizePhoneNumber } from '@/services/proposals'
 import pb from '@/lib/pocketbase/client'
@@ -20,10 +26,136 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { toast } from '@/hooks/use-toast'
 
+export type ProposalCardCategory =
+  | 'proposta_enviada'
+  | 'contraproposta'
+  | 'aceite'
+  | 'recusa'
+  | 'contrato_preparacao'
+  | 'contrato_conferencia'
+  | 'assinatura'
+  | 'finalizacao'
+
+export interface CategoryVisual {
+  label: string
+  icon: LucideIcon
+  bannerGradient: string
+  iconBg: string
+  iconColor: string
+  badgeBg: string
+  badgeText: string
+  badgeBorder: string
+  accentBorder: string
+}
+
+export const CATEGORY_VISUALS: Record<ProposalCardCategory, CategoryVisual> = {
+  proposta_enviada: {
+    label: 'Envio de Proposta',
+    icon: Send,
+    bannerGradient: 'from-blue-600 via-indigo-600 to-blue-700',
+    iconBg: 'bg-white/20 backdrop-blur-xs text-white border border-white/30',
+    iconColor: 'text-white',
+    badgeBg: 'bg-blue-50/90',
+    badgeText: 'text-blue-700',
+    badgeBorder: 'border-blue-200/60',
+    accentBorder: 'group-hover:border-blue-400/60',
+  },
+  contraproposta: {
+    label: 'Contraproposta',
+    icon: ArrowRightLeft,
+    bannerGradient: 'from-amber-500 via-orange-500 to-amber-600',
+    iconBg: 'bg-white/20 backdrop-blur-xs text-white border border-white/30',
+    iconColor: 'text-white',
+    badgeBg: 'bg-amber-50/90',
+    badgeText: 'text-amber-800',
+    badgeBorder: 'border-amber-200/60',
+    accentBorder: 'group-hover:border-amber-400/60',
+  },
+  aceite: {
+    label: 'Proposta Aceita',
+    icon: CheckCircle2,
+    bannerGradient: 'from-emerald-600 via-teal-600 to-emerald-700',
+    iconBg: 'bg-white/20 backdrop-blur-xs text-white border border-white/30',
+    iconColor: 'text-white',
+    badgeBg: 'bg-emerald-50/90',
+    badgeText: 'text-emerald-700',
+    badgeBorder: 'border-emerald-200/60',
+    accentBorder: 'group-hover:border-emerald-400/60',
+  },
+  recusa: {
+    label: 'Proposta Recusada',
+    icon: XCircle,
+    bannerGradient: 'from-rose-600 via-red-600 to-rose-700',
+    iconBg: 'bg-white/20 backdrop-blur-xs text-white border border-white/30',
+    iconColor: 'text-white',
+    badgeBg: 'bg-rose-50/90',
+    badgeText: 'text-rose-700',
+    badgeBorder: 'border-rose-200/60',
+    accentBorder: 'group-hover:border-rose-400/60',
+  },
+  contrato_preparacao: {
+    label: 'Contrato em Preparação',
+    icon: FileText,
+    bannerGradient: 'from-sky-600 via-cyan-600 to-blue-700',
+    iconBg: 'bg-white/20 backdrop-blur-xs text-white border border-white/30',
+    iconColor: 'text-white',
+    badgeBg: 'bg-sky-50/90',
+    badgeText: 'text-sky-700',
+    badgeBorder: 'border-sky-200/60',
+    accentBorder: 'group-hover:border-sky-400/60',
+  },
+  contrato_conferencia: {
+    label: 'Pronto p/ Conferência',
+    icon: FileCheck,
+    bannerGradient: 'from-teal-600 via-emerald-600 to-cyan-700',
+    iconBg: 'bg-white/20 backdrop-blur-xs text-white border border-white/30',
+    iconColor: 'text-white',
+    badgeBg: 'bg-teal-50/90',
+    badgeText: 'text-teal-700',
+    badgeBorder: 'border-teal-200/60',
+    accentBorder: 'group-hover:border-teal-400/60',
+  },
+  assinatura: {
+    label: 'Pronto p/ Assinatura',
+    icon: PenTool,
+    bannerGradient: 'from-violet-600 via-purple-600 to-indigo-700',
+    iconBg: 'bg-white/20 backdrop-blur-xs text-white border border-white/30',
+    iconColor: 'text-white',
+    badgeBg: 'bg-purple-50/90',
+    badgeText: 'text-purple-700',
+    badgeBorder: 'border-purple-200/60',
+    accentBorder: 'group-hover:border-purple-400/60',
+  },
+  finalizacao: {
+    label: 'Finalização',
+    icon: Trophy,
+    bannerGradient: 'from-fuchsia-600 via-pink-600 to-purple-700',
+    iconBg: 'bg-white/20 backdrop-blur-xs text-white border border-white/30',
+    iconColor: 'text-white',
+    badgeBg: 'bg-fuchsia-50/90',
+    badgeText: 'text-fuchsia-700',
+    badgeBorder: 'border-fuchsia-200/60',
+    accentBorder: 'group-hover:border-fuchsia-400/60',
+  },
+}
+
+export const WHATSAPP_FOOTER = `https://portaldocliente.3atoimoveis.com.br/
+
+Para dúvidas fale com a gente nos canais abaixo:
+
+(11) 4422-7729 ( Tel e Whatsapp )
+Email: atendimento@3atoimoveis.com.br / 3atoimoveis@gmail.com`
+
+export function formatWhatsAppMessage(cardText: string): string {
+  const trimmed = cardText.trimEnd()
+  return `${trimmed}\n\n${WHATSAPP_FOOTER}`
+}
+
 interface ProposalMessageCard {
   id: string
   title: string
   text: string
+  category: ProposalCardCategory
 }
 
 interface ProposalSection {
@@ -46,11 +178,25 @@ const SECTIONS: ProposalSection[] = [
       {
         id: 'cn-1',
         title: 'Proposta enviada ao proprietário',
+        category: 'proposta_enviada',
         text: 'Olá! Sua proposta foi encaminhada ao proprietário. Por gentileza, aguarde. Em breve retornaremos com novidades sobre a negociação.',
+      },
+      {
+        id: 'cn-aceita',
+        title: 'Proposta aceita pelo proprietário',
+        category: 'aceite',
+        text: 'Olá Temos novidades sobre sua Proposta! O proprietário analisou sua proposta e aceitou as condições, por favor no Portal , vá em Negociações e veja a movimentação, logo encaminharemos as próximas etapas.',
+      },
+      {
+        id: 'cn-recusada',
+        title: 'Proposta recusada pelo proprietário',
+        category: 'recusa',
+        text: 'Olá Temos novidades sobre sua Proposta! O proprietário analisou sua proposta e recusou as condições, por favor no Portal , vá em Negociações e veja a movimentação, para mais informações entre em contato com a gente no telefone (11) 4422-7729, ou pelo Whatsapp neste mesmo número.',
       },
       {
         id: 'cn-2',
         title: 'Proprietário fez uma contraproposta',
+        category: 'contraproposta',
         text: `Olá! Temos novidades sobre sua proposta. O proprietário analisou sua proposta e enviou uma contraproposta.
 
 Por gentileza, acesse nosso portal, vá até Negociações e verifique a movimentação.`,
@@ -58,6 +204,7 @@ Por gentileza, acesse nosso portal, vá até Negociações e verifique a movimen
       {
         id: 'cn-4',
         title: 'Contraproposta do cliente recusada pelo proprietário',
+        category: 'recusa',
         text: `Olá! Infelizmente, o proprietário analisou sua contraproposta e não a aceitou.
 
 Para mais informações, entre em contato conosco pelo telefone (11) 4422-7729 ou envie uma mensagem por aqui.`,
@@ -65,6 +212,7 @@ Para mais informações, entre em contato conosco pelo telefone (11) 4422-7729 o
       {
         id: 'cn-6',
         title: 'Sua contraproposta foi aceita pelo proprietário',
+        category: 'aceite',
         text: `Olá! Sua contraproposta foi aceita pelo proprietário. A negociação avançou para a próxima etapa.
 
 Por gentileza, acesse Negociações para acompanhar a movimentação.`,
@@ -72,6 +220,7 @@ Por gentileza, acesse Negociações para acompanhar a movimentação.`,
       {
         id: 'cn-7',
         title: 'Proprietário aceitou a contraproposta do cliente',
+        category: 'aceite',
         text: `Olá! Temos ótimas novidades! O proprietário aceitou sua contraproposta.
 
 Por gentileza, acesse nosso portal, vá até Negociações e verifique a movimentação.`,
@@ -79,6 +228,7 @@ Por gentileza, acesse nosso portal, vá até Negociações e verifique a movimen
       {
         id: 'cn-8',
         title: 'Contrato em preparação',
+        category: 'contrato_preparacao',
         text: `Olá! Temos novidades! Estamos preparando seu contrato para assinatura.
 
 Por gentileza, acesse nosso portal, vá até Negociações e acompanhe a movimentação.`,
@@ -86,6 +236,7 @@ Por gentileza, acesse nosso portal, vá até Negociações e acompanhe a movimen
       {
         id: 'cn-9',
         title: 'Contrato pronto para conferência',
+        category: 'contrato_conferencia',
         text: `Olá! Temos novidades! Seu contrato está pronto para conferência.
 
 Por gentileza, acesse Negociações, entre em Contrato Finalizado, identificado pela cor verde, e clique em Visualizar PDF do Contrato para realizar a conferência.
@@ -95,6 +246,7 @@ Estando tudo correto, avançaremos para a assinatura.`,
       {
         id: 'cn-10',
         title: 'Contrato pronto para assinatura',
+        category: 'assinatura',
         text: `Olá! Temos novidades! Seu contrato está pronto para assinatura.
 
 Por gentileza, acesse Negociações e clique em Assinar na D4Sign, identificado pela cor laranja. Você será redirecionado para realizar a assinatura do contrato.`,
@@ -111,11 +263,25 @@ Por gentileza, acesse Negociações e clique em Assinar na D4Sign, identificado 
       {
         id: 'pmp-1',
         title: 'Proposta enviada ao cliente',
+        category: 'proposta_enviada',
         text: 'Olá! Sua proposta foi encaminhada ao cliente. Por gentileza, aguarde. Em breve retornaremos com novidades sobre a negociação.',
+      },
+      {
+        id: 'pmp-aceita',
+        title: 'Proposta aceita pelo cliente',
+        category: 'aceite',
+        text: 'Olá Temos novidades sobre sua Proposta! O cliente analisou sua proposta e aceitou as condições, por favor no Portal vá em Minhas Propostas e veja a movimentação, logo encaminharemos as próximas etapas.',
+      },
+      {
+        id: 'pmp-recusada',
+        title: 'Proposta recusada pelo cliente',
+        category: 'recusa',
+        text: 'Olá Temos novidades sobre sua Proposta! O cliente analisou sua proposta e recusou as condições, por favor no Portal , vá em Minhas Propostas e veja a movimentação, para mais informações entre em contato com a gente no telefone (11) 4422-7729, ou pelo Whatsapp neste mesmo número.',
       },
       {
         id: 'pmp-2',
         title: 'Cliente fez uma contraproposta',
+        category: 'contraproposta',
         text: `Olá! Temos novidades sobre sua proposta. O cliente analisou sua proposta e enviou uma contraproposta.
 
 Por gentileza, acesse nosso portal, vá até Minhas Propostas e verifique a movimentação.`,
@@ -123,6 +289,7 @@ Por gentileza, acesse nosso portal, vá até Minhas Propostas e verifique a movi
       {
         id: 'pmp-4',
         title: 'Contraproposta do proprietário recusada pelo cliente',
+        category: 'recusa',
         text: `Olá! Infelizmente, o cliente analisou sua contraproposta e não a aceitou.
 
 Para mais informações, entre em contato conosco pelo telefone (11) 4422-7729 ou envie uma mensagem por aqui.`,
@@ -130,6 +297,7 @@ Para mais informações, entre em contato conosco pelo telefone (11) 4422-7729 o
       {
         id: 'pmp-6',
         title: 'Cliente aceitou a contraproposta',
+        category: 'aceite',
         text: `Olá! Temos ótimas novidades! O cliente aceitou sua contraproposta.
 
 Por gentileza, acesse nosso portal, vá até Minhas Propostas e verifique a movimentação.`,
@@ -137,6 +305,7 @@ Por gentileza, acesse nosso portal, vá até Minhas Propostas e verifique a movi
       {
         id: 'pmp-7',
         title: 'Sua contraproposta foi aceita pelo cliente',
+        category: 'aceite',
         text: `Olá! Sua contraproposta foi aceita pelo cliente. A negociação avançou para a próxima etapa.
 
 Por gentileza, acesse Minhas Propostas para acompanhar a movimentação.`,
@@ -144,6 +313,7 @@ Por gentileza, acesse Minhas Propostas para acompanhar a movimentação.`,
       {
         id: 'pmp-8',
         title: 'Contrato em preparação',
+        category: 'contrato_preparacao',
         text: `Olá! Temos novidades! Estamos preparando seu contrato para assinatura.
 
 Por gentileza, acesse nosso portal, vá até Minhas Propostas e acompanhe a movimentação.`,
@@ -151,6 +321,7 @@ Por gentileza, acesse nosso portal, vá até Minhas Propostas e acompanhe a movi
       {
         id: 'pmp-9',
         title: 'Contrato pronto para conferência',
+        category: 'contrato_conferencia',
         text: `Olá! Temos novidades! Seu contrato está pronto para conferência.
 
 Por gentileza, acesse Minhas Propostas, entre em Contrato Finalizado, identificado pela cor verde, e clique em Visualizar Contrato PDF para realizar a conferência.
@@ -160,6 +331,7 @@ Estando tudo correto, avançaremos para a assinatura.`,
       {
         id: 'pmp-10',
         title: 'Contrato pronto para assinatura',
+        category: 'assinatura',
         text: `Olá! Temos novidades! Seu contrato está pronto para assinatura.
 
 Por gentileza, acesse Minhas Propostas e clique em Assinar na D4Sign, identificado pela cor laranja. Você será redirecionado para realizar a assinatura do contrato.`,
@@ -176,6 +348,7 @@ Por gentileza, acesse Minhas Propostas e clique em Assinar na D4Sign, identifica
       {
         id: 'fin-1',
         title: 'Contrato assinado',
+        category: 'finalizacao',
         text: `🎉 Contrato assinado com sucesso! Parabéns!
 
 Agradecemos pela confiança. O contrato foi assinado por todas as partes e a negociação avançou para a etapa final.`,
@@ -183,6 +356,7 @@ Agradecemos pela confiança. O contrato foi assinado por todas as partes e a neg
       {
         id: 'fin-2',
         title: 'Contrato finalizado',
+        category: 'finalizacao',
         text: `🎉 Contrato finalizado com sucesso!
 
 Parabéns! Todo o processo foi concluído com sucesso. Agradecemos pela confiança!`,
@@ -213,11 +387,12 @@ export default function Proposals() {
 
   const handleCopyText = async (cardId: string, text: string) => {
     try {
-      await navigator.clipboard.writeText(text)
+      const fullMessage = formatWhatsAppMessage(text)
+      await navigator.clipboard.writeText(fullMessage)
       setCopiedCardId(cardId)
       toast({
         title: 'Texto copiado!',
-        description: 'Mensagem copiada para a área de transferência.',
+        description: 'Mensagem completa com rodapé copiada para a área de transferência.',
       })
       setTimeout(() => {
         setCopiedCardId(null)
@@ -253,13 +428,14 @@ export default function Proposals() {
     }))
 
     try {
+      const fullMessage = formatWhatsAppMessage(card.text)
       const response = await pb.send<{ ok?: boolean; messageId?: string; error?: string }>(
         '/backend/v1/whatsapp/send',
         {
           method: 'POST',
           body: {
             to: normalizedPhone,
-            text: card.text,
+            text: fullMessage,
           },
         },
       )
@@ -422,38 +598,89 @@ export default function Proposals() {
                   const hasContact = Boolean(selectedContact && normalizedPhone)
                   const isCopied = copiedCardId === card.id
 
+                  const visual =
+                    CATEGORY_VISUALS[card.category] || CATEGORY_VISUALS.proposta_enviada
+                  const VisualIcon = visual.icon
+
                   return (
                     <Card
                       key={card.id}
-                      className="border-zinc-200/80 bg-white hover:border-violet-300 transition-all duration-200 shadow-xs flex flex-col justify-between"
+                      className="group border-zinc-200/80 bg-white hover:border-violet-300 hover:shadow-md transition-all duration-200 shadow-xs flex flex-col justify-between overflow-hidden"
                     >
-                      <CardHeader className="pb-3 pt-4 px-4 border-b border-zinc-100 flex flex-row items-start justify-between gap-2">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-violet-50 text-[11px] font-bold text-violet-700">
+                      {/* Top Visual Header / Cover Image */}
+                      <div
+                        className={`relative h-24 w-full bg-gradient-to-r ${visual.bannerGradient} p-3.5 flex items-end justify-between overflow-hidden select-none`}
+                      >
+                        {/* Decorative pattern overlays */}
+                        <div
+                          className="absolute inset-0 opacity-15 mix-blend-overlay pointer-events-none"
+                          style={{
+                            backgroundImage:
+                              'radial-gradient(circle at 1px 1px, white 1px, transparent 0)',
+                            backgroundSize: '12px 12px',
+                          }}
+                        />
+                        <div className="absolute -right-6 -bottom-8 opacity-20 pointer-events-none text-white transform rotate-12">
+                          <VisualIcon className="h-32 w-32" />
+                        </div>
+
+                        {/* Top-left category badge */}
+                        <div className="relative z-10 flex items-center gap-2">
+                          <div
+                            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${visual.iconBg} shadow-sm transition-transform duration-200 group-hover:scale-105`}
+                          >
+                            <VisualIcon className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10.5px] font-semibold tracking-wide uppercase bg-black/25 text-white/95 backdrop-blur-xs border border-white/20">
+                              {visual.label}
+                            </span>
+                            <div className="text-[11px] text-white/80 font-medium mt-0.5">
+                              Etapa #{index + 1}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Top-right subtle card index badge */}
+                        <div className="relative z-10 flex items-center">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 backdrop-blur-xs text-[11px] font-bold text-white border border-white/30">
                             {index + 1}
                           </span>
-                          <CardTitle className="text-sm font-semibold text-zinc-900 truncate">
+                        </div>
+                      </div>
+
+                      <CardHeader className="pb-2.5 pt-3.5 px-4 border-b border-zinc-100 flex flex-row items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <CardTitle className="text-sm font-semibold text-zinc-900 leading-snug line-clamp-2">
                             {card.title}
                           </CardTitle>
                         </div>
                         <Button
                           variant="ghost"
                           size="icon"
-                          className="h-7 w-7 text-zinc-400 hover:text-zinc-700 shrink-0"
+                          className="h-8 w-8 text-zinc-400 hover:text-zinc-700 shrink-0"
                           onClick={() => handleCopyText(card.id, card.text)}
-                          title="Copiar texto"
+                          title="Copiar texto com rodapé"
                         >
                           {isCopied ? (
-                            <Check className="h-3.5 w-3.5 text-emerald-600" />
+                            <Check className="h-4 w-4 text-emerald-600" />
                           ) : (
-                            <Copy className="h-3.5 w-3.5" />
+                            <Copy className="h-4 w-4" />
                           )}
                         </Button>
                       </CardHeader>
 
-                      <CardContent className="pt-3.5 px-4 pb-3 flex-1">
-                        <div className="bg-zinc-50/90 rounded-lg p-3 border border-zinc-100/90 text-[13px] text-zinc-700 whitespace-pre-wrap font-sans leading-relaxed">
-                          {card.text}
+                      <CardContent className="pt-3 px-4 pb-3 flex-1 flex flex-col justify-between">
+                        <div>
+                          <div className="bg-zinc-50/90 rounded-lg p-3 border border-zinc-100/90 text-[13px] text-zinc-700 whitespace-pre-wrap font-sans leading-relaxed">
+                            {card.text}
+                          </div>
+
+                          {/* Subtle hint that footer is appended on send/copy */}
+                          <div className="mt-2 text-[11px] text-zinc-400 flex items-center gap-1.5 px-0.5">
+                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-500/80 inline-block" />
+                            <span>Rodapé com links e canais de atendimento anexado no envio</span>
+                          </div>
                         </div>
 
                         {/* Status feedback message */}
@@ -477,7 +704,7 @@ export default function Proposals() {
                       <CardFooter className="pt-2 px-4 pb-3 border-t border-zinc-100 bg-zinc-50/40">
                         <Button
                           size="sm"
-                          className="w-full text-xs font-medium h-9 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 transition-colors"
+                          className="w-full text-xs font-medium h-9 bg-violet-600 hover:bg-violet-700 disabled:opacity-60 transition-colors shadow-xs"
                           onClick={() => handleSendMessage(card)}
                           disabled={!hasContact || isSending}
                         >
