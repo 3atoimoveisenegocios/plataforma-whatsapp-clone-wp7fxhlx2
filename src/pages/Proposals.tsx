@@ -149,12 +149,17 @@ Para dúvidas fale com a gente nos canais abaixo:
 (11) 4422-7729 ( Tel e Whatsapp )
 Email: atendimento@3atoimoveis.com.br / 3atoimoveis@gmail.com`
 
-/** Constrói a URL direta de download/mídia do Google Drive a partir do ID */
+/** Constrói a URL de download direto para ENVIO pelo WhatsApp */
 export function getGoogleDriveMediaUrl(driveId: string): string {
   return `https://drive.google.com/uc?export=download&id=${driveId}`
 }
 
-/** Fallback padrão por categoria caso necessário */
+/** Constrói a URL de visualização (thumbnail) para EXIBIÇÃO no painel (tag <img>) */
+export function getGoogleDriveThumbnailUrl(driveId: string): string {
+  return `https://drive.google.com/thumbnail?id=${driveId}&sz=w1200`
+}
+
+/** Fallback padrão por categoria caso necessário (para envio WhatsApp) */
 export const CATEGORY_FALLBACK_IMAGES: Record<ProposalCardCategory, string> = {
   proposta_enviada: getGoogleDriveMediaUrl('1m_6AjhZD6Q5DKJRHCOazETD_7RnhEzNb'),
   contraproposta: getGoogleDriveMediaUrl('1VwlgNJg0DfH2UHLbV3U_k5lcmjKtUm__'),
@@ -164,6 +169,18 @@ export const CATEGORY_FALLBACK_IMAGES: Record<ProposalCardCategory, string> = {
   contrato_conferencia: getGoogleDriveMediaUrl('1Yd4GunDoxffJQaO3gfeTbWhyeVByqKNE'),
   assinatura: getGoogleDriveMediaUrl('11J-2t6yRiyJxsptU339lcBv6zF38bn6t'),
   finalizacao: getGoogleDriveMediaUrl('1U9zyaz18arnXudH93SNTvxNXIfwNv63H'),
+}
+
+/** Fallback padrão por categoria para exibição no painel */
+export const CATEGORY_FALLBACK_THUMBNAILS: Record<ProposalCardCategory, string> = {
+  proposta_enviada: getGoogleDriveThumbnailUrl('1m_6AjhZD6Q5DKJRHCOazETD_7RnhEzNb'),
+  contraproposta: getGoogleDriveThumbnailUrl('1VwlgNJg0DfH2UHLbV3U_k5lcmjKtUm__'),
+  aceite: getGoogleDriveThumbnailUrl('1Ddrxo-XoEy4XBnTAidM2tfV24nZyWpVr'),
+  recusa: getGoogleDriveThumbnailUrl('1VjTDyKA335-qvyo_kq7ampzVqBu08CGC'),
+  contrato_preparacao: getGoogleDriveThumbnailUrl('16HwlZFJLLp4YT5fnoNYWsWxqtAq04Mpq'),
+  contrato_conferencia: getGoogleDriveThumbnailUrl('1Yd4GunDoxffJQaO3gfeTbWhyeVByqKNE'),
+  assinatura: getGoogleDriveThumbnailUrl('11J-2t6yRiyJxsptU339lcBv6zF38bn6t'),
+  finalizacao: getGoogleDriveThumbnailUrl('1U9zyaz18arnXudH93SNTvxNXIfwNv63H'),
 }
 
 // Mantido para compatibilidade retroativa com eventuais imports
@@ -180,7 +197,9 @@ export interface ProposalMessageCard {
   title: string
   text: string
   category: ProposalCardCategory
+  driveId: string
   mediaUrl: string
+  displayUrl: string
 }
 
 export interface ProposalSection {
@@ -204,28 +223,36 @@ export const SECTIONS: ProposalSection[] = [
         id: 'cn-1',
         title: 'Proposta enviada ao proprietário',
         category: 'proposta_enviada',
+        driveId: '1m_6AjhZD6Q5DKJRHCOazETD_7RnhEzNb',
         mediaUrl: getGoogleDriveMediaUrl('1m_6AjhZD6Q5DKJRHCOazETD_7RnhEzNb'),
+        displayUrl: getGoogleDriveThumbnailUrl('1m_6AjhZD6Q5DKJRHCOazETD_7RnhEzNb'),
         text: 'Olá! Sua proposta foi encaminhada ao proprietário. Por gentileza, aguarde. Em breve retornaremos com novidades sobre a negociação.',
       },
       {
         id: 'cn-aceita',
         title: 'Proposta aceita pelo proprietário',
         category: 'aceite',
+        driveId: '1Ddrxo-XoEy4XBnTAidM2tfV24nZyWpVr',
         mediaUrl: getGoogleDriveMediaUrl('1Ddrxo-XoEy4XBnTAidM2tfV24nZyWpVr'),
+        displayUrl: getGoogleDriveThumbnailUrl('1Ddrxo-XoEy4XBnTAidM2tfV24nZyWpVr'),
         text: 'Olá Temos novidades sobre sua Proposta! O proprietário analisou sua proposta e aceitou as condições, por favor no Portal , vá em Negociações e veja a movimentação, logo encaminharemos as próximas etapas.',
       },
       {
         id: 'cn-recusada',
         title: 'Proposta recusada pelo proprietário',
         category: 'recusa',
+        driveId: '1VjTDyKA335-qvyo_kq7ampzVqBu08CGC',
         mediaUrl: getGoogleDriveMediaUrl('1VjTDyKA335-qvyo_kq7ampzVqBu08CGC'),
+        displayUrl: getGoogleDriveThumbnailUrl('1VjTDyKA335-qvyo_kq7ampzVqBu08CGC'),
         text: 'Olá Temos novidades sobre sua Proposta! O proprietário analisou sua proposta e recusou as condições, por favor no Portal , vá em Negociações e veja a movimentação, para mais informações entre em contato com a gente no telefone (11) 4422-7729, ou pelo Whatsapp neste mesmo número.',
       },
       {
         id: 'cn-2',
         title: 'Proprietário fez uma contraproposta',
         category: 'contraproposta',
+        driveId: '1VwlgNJg0DfH2UHLbV3U_k5lcmjKtUm__',
         mediaUrl: getGoogleDriveMediaUrl('1VwlgNJg0DfH2UHLbV3U_k5lcmjKtUm__'),
+        displayUrl: getGoogleDriveThumbnailUrl('1VwlgNJg0DfH2UHLbV3U_k5lcmjKtUm__'),
         text: `Olá! Temos novidades sobre sua proposta. O proprietário analisou sua proposta e enviou uma contraproposta.
 
 Por gentileza, acesse nosso portal, vá até Negociações e verifique a movimentação.`,
@@ -234,7 +261,9 @@ Por gentileza, acesse nosso portal, vá até Negociações e verifique a movimen
         id: 'cn-4',
         title: 'Contraproposta do cliente recusada pelo proprietário',
         category: 'recusa',
+        driveId: '1x_Y4FijUKrrTdWpWuGRtxiptDqTO-UuM',
         mediaUrl: getGoogleDriveMediaUrl('1x_Y4FijUKrrTdWpWuGRtxiptDqTO-UuM'),
+        displayUrl: getGoogleDriveThumbnailUrl('1x_Y4FijUKrrTdWpWuGRtxiptDqTO-UuM'),
         text: `Olá! Infelizmente, o proprietário analisou sua contraproposta e não a aceitou.
 
 Para mais informações, entre em contato conosco pelo telefone (11) 4422-7729 ou envie uma mensagem por aqui.`,
@@ -243,7 +272,9 @@ Para mais informações, entre em contato conosco pelo telefone (11) 4422-7729 o
         id: 'cn-6',
         title: 'Sua contraproposta foi aceita pelo proprietário',
         category: 'aceite',
+        driveId: '1MwRWAEm08LdOAK0ZV8vwCrsyxrF7-q1A',
         mediaUrl: getGoogleDriveMediaUrl('1MwRWAEm08LdOAK0ZV8vwCrsyxrF7-q1A'),
+        displayUrl: getGoogleDriveThumbnailUrl('1MwRWAEm08LdOAK0ZV8vwCrsyxrF7-q1A'),
         text: `Olá! Sua contraproposta foi aceita pelo proprietário. A negociação avançou para a próxima etapa.
 
 Por gentileza, acesse Negociações para acompanhar a movimentação.`,
@@ -252,7 +283,9 @@ Por gentileza, acesse Negociações para acompanhar a movimentação.`,
         id: 'cn-7',
         title: 'Proprietário aceitou a contraproposta do cliente',
         category: 'aceite',
+        driveId: '1MwRWAEm08LdOAK0ZV8vwCrsyxrF7-q1A',
         mediaUrl: getGoogleDriveMediaUrl('1MwRWAEm08LdOAK0ZV8vwCrsyxrF7-q1A'),
+        displayUrl: getGoogleDriveThumbnailUrl('1MwRWAEm08LdOAK0ZV8vwCrsyxrF7-q1A'),
         text: `Olá! Temos ótimas novidades! O proprietário aceitou sua contraproposta.
 
 Por gentileza, acesse nosso portal, vá até Negociações e verifique a movimentação.`,
@@ -261,7 +294,9 @@ Por gentileza, acesse nosso portal, vá até Negociações e verifique a movimen
         id: 'cn-8',
         title: 'Contrato em preparação',
         category: 'contrato_preparacao',
+        driveId: '16HwlZFJLLp4YT5fnoNYWsWxqtAq04Mpq',
         mediaUrl: getGoogleDriveMediaUrl('16HwlZFJLLp4YT5fnoNYWsWxqtAq04Mpq'),
+        displayUrl: getGoogleDriveThumbnailUrl('16HwlZFJLLp4YT5fnoNYWsWxqtAq04Mpq'),
         text: `Olá! Temos novidades! Estamos preparando seu contrato para assinatura.
 
 Por gentileza, acesse nosso portal, vá até Negociações e acompanhe a movimentação.`,
@@ -270,7 +305,9 @@ Por gentileza, acesse nosso portal, vá até Negociações e acompanhe a movimen
         id: 'cn-9',
         title: 'Contrato pronto para conferência',
         category: 'contrato_conferencia',
+        driveId: '1Yd4GunDoxffJQaO3gfeTbWhyeVByqKNE',
         mediaUrl: getGoogleDriveMediaUrl('1Yd4GunDoxffJQaO3gfeTbWhyeVByqKNE'),
+        displayUrl: getGoogleDriveThumbnailUrl('1Yd4GunDoxffJQaO3gfeTbWhyeVByqKNE'),
         text: `Olá! Temos novidades! Seu contrato está pronto para conferência.
 
 Por gentileza, acesse Negociações, entre em Contrato Finalizado, identificado pela cor verde, e clique em Visualizar PDF do Contrato para realizar a conferência.
@@ -281,7 +318,9 @@ Estando tudo correto, avançaremos para a assinatura.`,
         id: 'cn-10',
         title: 'Contrato pronto para assinatura',
         category: 'assinatura',
+        driveId: '11J-2t6yRiyJxsptU339lcBv6zF38bn6t',
         mediaUrl: getGoogleDriveMediaUrl('11J-2t6yRiyJxsptU339lcBv6zF38bn6t'),
+        displayUrl: getGoogleDriveThumbnailUrl('11J-2t6yRiyJxsptU339lcBv6zF38bn6t'),
         text: `Olá! Temos novidades! Seu contrato está pronto para assinatura.
 
 Por gentileza, acesse Negociações e clique em Assinar na D4Sign, identificado pela cor laranja. Você será redirecionado para realizar a assinatura do contrato.`,
@@ -299,28 +338,36 @@ Por gentileza, acesse Negociações e clique em Assinar na D4Sign, identificado 
         id: 'pmp-1',
         title: 'Proposta enviada ao cliente',
         category: 'proposta_enviada',
+        driveId: '17e-X5B9eUe_Q-N0BUbrOq7aBbIrnZzJB',
         mediaUrl: getGoogleDriveMediaUrl('17e-X5B9eUe_Q-N0BUbrOq7aBbIrnZzJB'),
+        displayUrl: getGoogleDriveThumbnailUrl('17e-X5B9eUe_Q-N0BUbrOq7aBbIrnZzJB'),
         text: 'Olá! Sua proposta foi encaminhada ao cliente. Por gentileza, aguarde. Em breve retornaremos com novidades sobre a negociação.',
       },
       {
         id: 'pmp-aceita',
         title: 'Proposta aceita pelo cliente',
         category: 'aceite',
+        driveId: '11uBrKOc6LOxfjyaB6HIiEPk0vtzc3is_',
         mediaUrl: getGoogleDriveMediaUrl('11uBrKOc6LOxfjyaB6HIiEPk0vtzc3is_'),
+        displayUrl: getGoogleDriveThumbnailUrl('11uBrKOc6LOxfjyaB6HIiEPk0vtzc3is_'),
         text: 'Olá Temos novidades sobre sua Proposta! O cliente analisou sua proposta e aceitou as condições, por favor no Portal vá em Minhas Propostas e veja a movimentação, logo encaminharemos as próximas etapas.',
       },
       {
         id: 'pmp-recusada',
         title: 'Proposta recusada pelo cliente',
         category: 'recusa',
+        driveId: '1zFeDyVM_9QddaLujFRMeKfEKJQnxObWX',
         mediaUrl: getGoogleDriveMediaUrl('1zFeDyVM_9QddaLujFRMeKfEKJQnxObWX'),
+        displayUrl: getGoogleDriveThumbnailUrl('1zFeDyVM_9QddaLujFRMeKfEKJQnxObWX'),
         text: 'Olá Temos novidades sobre sua Proposta! O cliente analisou sua proposta e recusou as condições, por favor no Portal , vá em Minhas Propostas e veja a movimentação, para mais informações entre em contato com a gente no telefone (11) 4422-7729, ou pelo Whatsapp neste mesmo número.',
       },
       {
         id: 'pmp-2',
         title: 'Cliente fez uma contraproposta',
         category: 'contraproposta',
+        driveId: '1hJTH0Vp_s4e53FyBsEeGrusC0sL0A91_',
         mediaUrl: getGoogleDriveMediaUrl('1hJTH0Vp_s4e53FyBsEeGrusC0sL0A91_'),
+        displayUrl: getGoogleDriveThumbnailUrl('1hJTH0Vp_s4e53FyBsEeGrusC0sL0A91_'),
         text: `Olá! Temos novidades sobre sua proposta. O cliente analisou sua proposta e enviou uma contraproposta.
 
 Por gentileza, acesse nosso portal, vá até Minhas Propostas e verifique a movimentação.`,
@@ -329,7 +376,9 @@ Por gentileza, acesse nosso portal, vá até Minhas Propostas e verifique a movi
         id: 'pmp-4',
         title: 'Contraproposta do proprietário recusada pelo cliente',
         category: 'recusa',
+        driveId: '1_F4oHZAzXs2XuDMuQX97oL0oNB1j36QZ',
         mediaUrl: getGoogleDriveMediaUrl('1_F4oHZAzXs2XuDMuQX97oL0oNB1j36QZ'),
+        displayUrl: getGoogleDriveThumbnailUrl('1_F4oHZAzXs2XuDMuQX97oL0oNB1j36QZ'),
         text: `Olá! Infelizmente, o cliente analisou sua contraproposta e não a aceitou.
 
 Para mais informações, entre em contato conosco pelo telefone (11) 4422-7729 ou envie uma mensagem por aqui.`,
@@ -338,7 +387,9 @@ Para mais informações, entre em contato conosco pelo telefone (11) 4422-7729 o
         id: 'pmp-6',
         title: 'Cliente aceitou a contraproposta',
         category: 'aceite',
+        driveId: '1BA-kAZ1zDUJJgR2LmyX2f35CY8BcG8s5',
         mediaUrl: getGoogleDriveMediaUrl('1BA-kAZ1zDUJJgR2LmyX2f35CY8BcG8s5'),
+        displayUrl: getGoogleDriveThumbnailUrl('1BA-kAZ1zDUJJgR2LmyX2f35CY8BcG8s5'),
         text: `Olá! Temos ótimas novidades! O cliente aceitou sua contraproposta.
 
 Por gentileza, acesse nosso portal, vá até Minhas Propostas e verifique a movimentação.`,
@@ -347,7 +398,9 @@ Por gentileza, acesse nosso portal, vá até Minhas Propostas e verifique a movi
         id: 'pmp-7',
         title: 'Sua contraproposta foi aceita pelo cliente',
         category: 'aceite',
+        driveId: '1BA-kAZ1zDUJJgR2LmyX2f35CY8BcG8s5',
         mediaUrl: getGoogleDriveMediaUrl('1BA-kAZ1zDUJJgR2LmyX2f35CY8BcG8s5'),
+        displayUrl: getGoogleDriveThumbnailUrl('1BA-kAZ1zDUJJgR2LmyX2f35CY8BcG8s5'),
         text: `Olá! Sua contraproposta foi aceita pelo cliente. A negociação avançou para a próxima etapa.
 
 Por gentileza, acesse Minhas Propostas para acompanhar a movimentação.`,
@@ -356,7 +409,9 @@ Por gentileza, acesse Minhas Propostas para acompanhar a movimentação.`,
         id: 'pmp-8',
         title: 'Contrato em preparação',
         category: 'contrato_preparacao',
+        driveId: '16HwlZFJLLp4YT5fnoNYWsWxqtAq04Mpq',
         mediaUrl: getGoogleDriveMediaUrl('16HwlZFJLLp4YT5fnoNYWsWxqtAq04Mpq'),
+        displayUrl: getGoogleDriveThumbnailUrl('16HwlZFJLLp4YT5fnoNYWsWxqtAq04Mpq'),
         text: `Olá! Temos novidades! Estamos preparando seu contrato para assinatura.
 
 Por gentileza, acesse nosso portal, vá até Minhas Propostas e acompanhe a movimentação.`,
@@ -365,7 +420,9 @@ Por gentileza, acesse nosso portal, vá até Minhas Propostas e acompanhe a movi
         id: 'pmp-9',
         title: 'Contrato pronto para conferência',
         category: 'contrato_conferencia',
+        driveId: '1Yd4GunDoxffJQaO3gfeTbWhyeVByqKNE',
         mediaUrl: getGoogleDriveMediaUrl('1Yd4GunDoxffJQaO3gfeTbWhyeVByqKNE'),
+        displayUrl: getGoogleDriveThumbnailUrl('1Yd4GunDoxffJQaO3gfeTbWhyeVByqKNE'),
         text: `Olá! Temos novidades! Seu contrato está pronto para conferência.
 
 Por gentileza, acesse Minhas Propostas, entre em Contrato Finalizado, identificado pela cor verde, e clique em Visualizar Contrato PDF para realizar a conferência.
@@ -376,7 +433,9 @@ Estando tudo correto, avançaremos para a assinatura.`,
         id: 'pmp-10',
         title: 'Contrato pronto para assinatura',
         category: 'assinatura',
+        driveId: '11J-2t6yRiyJxsptU339lcBv6zF38bn6t',
         mediaUrl: getGoogleDriveMediaUrl('11J-2t6yRiyJxsptU339lcBv6zF38bn6t'),
+        displayUrl: getGoogleDriveThumbnailUrl('11J-2t6yRiyJxsptU339lcBv6zF38bn6t'),
         text: `Olá! Temos novidades! Seu contrato está pronto para assinatura.
 
 Por gentileza, acesse Minhas Propostas e clique em Assinar na D4Sign, identificado pela cor laranja. Você será redirecionado para realizar a assinatura do contrato.`,
@@ -394,7 +453,9 @@ Por gentileza, acesse Minhas Propostas e clique em Assinar na D4Sign, identifica
         id: 'fin-1',
         title: 'Contrato assinado',
         category: 'finalizacao',
+        driveId: '1U9zyaz18arnXudH93SNTvxNXIfwNv63H',
         mediaUrl: getGoogleDriveMediaUrl('1U9zyaz18arnXudH93SNTvxNXIfwNv63H'),
+        displayUrl: getGoogleDriveThumbnailUrl('1U9zyaz18arnXudH93SNTvxNXIfwNv63H'),
         text: `🎉 Contrato assinado com sucesso! Parabéns!
 
 Agradecemos pela confiança. O contrato foi assinado por todas as partes e a negociação avançou para a etapa final.`,
@@ -403,7 +464,9 @@ Agradecemos pela confiança. O contrato foi assinado por todas as partes e a neg
         id: 'fin-2',
         title: 'Contrato finalizado',
         category: 'finalizacao',
+        driveId: '17bUv-BJ2BzGpRQHVlpTzTTJgwpK_YyhM',
         mediaUrl: getGoogleDriveMediaUrl('17bUv-BJ2BzGpRQHVlpTzTTJgwpK_YyhM'),
+        displayUrl: getGoogleDriveThumbnailUrl('17bUv-BJ2BzGpRQHVlpTzTTJgwpK_YyhM'),
         text: `🎉 Contrato finalizado com sucesso!
 
 Parabéns! Todo o processo foi concluído com sucesso. Agradecemos pela confiança!`,
@@ -751,7 +814,7 @@ export default function Proposals() {
                         <div className="relative h-36 w-full bg-zinc-100 overflow-hidden select-none border-b border-zinc-100">
                           {/* Image */}
                           <img
-                            src={card.mediaUrl}
+                            src={card.displayUrl || card.mediaUrl}
                             alt={card.title}
                             loading="lazy"
                             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
