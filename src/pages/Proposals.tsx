@@ -18,6 +18,7 @@ import {
   Trophy,
   Search,
   X,
+  Pencil,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { ContactSelector } from '@/components/inbox/ContactSelector'
@@ -27,6 +28,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/hooks/use-toast'
 
 export type ProposalCardCategory =
@@ -146,8 +148,8 @@ export const WHATSAPP_FOOTER = `LINK DO PORTAL: https://portaldocliente.3atoimov
 
 Para dúvidas fale com a gente nos canais abaixo:
 
-(11) 4422-7729 ( Tel e Whatsapp )
-Email: atendimento@3atoimoveis.com.br / 3atoimoveis@gmail.com`
+Tel e Whatsapp: (11) 4422-7729
+Email: atendimento@3atoimoveis.com.br | 3atoimoveis@gmail.com`
 
 /** Constrói a URL de download direto para ENVIO pelo WhatsApp */
 export function getGoogleDriveMediaUrl(driveId: string): string {
@@ -489,6 +491,54 @@ export default function Proposals() {
     >
   >({})
   const [copiedCardId, setCopiedCardId] = useState<string | null>(null)
+  // Estado efêmero de edição de mensagem por card
+  const [editingCardId, setEditingCardId] = useState<string | null>(null)
+  const [draftTexts, setDraftTexts] = useState<Record<string, string>>({})
+  const [customTexts, setCustomTexts] = useState<Record<string, string>>({})
+
+  const handleStartEdit = (cardId: string, currentText: string) => {
+    setEditingCardId(cardId)
+    setDraftTexts((prev) => ({
+      ...prev,
+      [cardId]: customTexts[cardId] ?? currentText,
+    }))
+  }
+
+  const handleSaveEdit = (cardId: string) => {
+    const draft = draftTexts[cardId]
+    if (draft !== undefined) {
+      setCustomTexts((prev) => ({
+        ...prev,
+        [cardId]: draft,
+      }))
+    }
+    setEditingCardId(null)
+  }
+
+  const handleCancelEdit = (cardId: string) => {
+    setEditingCardId(null)
+    setDraftTexts((prev) => {
+      const next = { ...prev }
+      delete next[cardId]
+      return next
+    })
+  }
+
+  const handleResetCardText = (cardId: string) => {
+    setCustomTexts((prev) => {
+      const next = { ...prev }
+      delete next[cardId]
+      return next
+    })
+    setDraftTexts((prev) => {
+      const next = { ...prev }
+      delete next[cardId]
+      return next
+    })
+    if (editingCardId === cardId) {
+      setEditingCardId(null)
+    }
+  }
 
   // Extrair e normalizar telefone do contato selecionado
   const rawPhone =
@@ -554,6 +604,12 @@ export default function Proposals() {
       return
     }
 
+    // Se estiver em modo de edição ao disparar, utiliza o rascunho atual
+    const effectiveText =
+      editingCardId === card.id
+        ? (draftTexts[card.id] ?? customTexts[card.id] ?? card.text)
+        : (customTexts[card.id] ?? card.text)
+
     setSendingCardId(card.id)
     setStatusMap((prev) => ({
       ...prev,
@@ -561,7 +617,7 @@ export default function Proposals() {
     }))
 
     try {
-      const fullMessage = formatWhatsAppMessage(card.text, card.title)
+      const fullMessage = formatWhatsAppMessage(effectiveText, card.title)
       // Cada card usa a imagem específica do seu título via link direto do Google Drive
       const coverImage = card.mediaUrl || CATEGORY_FALLBACK_IMAGES[card.category]
 
@@ -595,6 +651,21 @@ export default function Proposals() {
           message: 'Enviado ✓',
         },
       }))
+
+      // Fecha modo de edição e reseta texto personalizado deste card após o envio (edição efêmera para aquele envio)
+      if (editingCardId === card.id) {
+        setEditingCardId(null)
+      }
+      setDraftTexts((prev) => {
+        const next = { ...prev }
+        delete next[card.id]
+        return next
+      })
+      setCustomTexts((prev) => {
+        const next = { ...prev }
+        delete next[card.id]
+        return next
+      })
 
       toast({
         title: 'Mensagem enviada com sucesso!',
@@ -865,7 +936,13 @@ export default function Proposals() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8 text-zinc-400 hover:text-zinc-700 shrink-0"
-                            onClick={() => handleCopyText(card.id, card.text, card.title)}
+                            onClick={() => {
+                              const activeText =
+                                editingCardId === card.id
+                                  ? (draftTexts[card.id] ?? customTexts[card.id] ?? card.text)
+                                  : (customTexts[card.id] ?? card.text)
+                              handleCopyText(card.id, activeText, card.title)
+                            }}
                             title="Copiar texto com rodapé"
                           >
                             {isCopied ? (
@@ -878,9 +955,93 @@ export default function Proposals() {
 
                         <CardContent className="pt-3 px-4 pb-3 flex-1 flex flex-col justify-between">
                           <div>
-                            <div className="bg-zinc-50/90 rounded-lg p-3 border border-zinc-100/90 text-[13px] text-zinc-700 whitespace-pre-wrap font-sans leading-relaxed">
-                              {card.text}
-                            </div>
+                            {editingCardId === card.id ? (
+                              <div className="space-y-2">
+                                <div className="flex items-center justify-between text-xs font-semibold text-violet-700">
+                                  <span className="flex items-center gap-1">
+                                    <Pencil className="h-3 w-3" />
+                                    Editando para este envio
+                                  </span>
+                                  <span className="text-[10.5px] font-normal text-zinc-400">
+                                    Padrão preservado
+                                  </span>
+                                </div>
+                                <Textarea
+                                  value={draftTexts[card.id] ?? ''}
+                                  onChange={(e) =>
+                                    setDraftTexts((prev) => ({
+                                      ...prev,
+                                      [card.id]: e.target.value,
+                                    }))
+                                  }
+                                  rows={4}
+                                  className="text-[13px] leading-relaxed bg-white border-violet-300 focus-visible:ring-violet-500/30 focus-visible:border-violet-500 resize-y min-h-[96px]"
+                                  placeholder="Escreva a mensagem personalizada para este envio..."
+                                  autoFocus
+                                />
+                                <div className="flex items-center justify-end gap-2 pt-1">
+                                  <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-7 px-2.5 text-xs text-zinc-600 hover:text-zinc-900"
+                                    onClick={() => handleCancelEdit(card.id)}
+                                  >
+                                    Cancelar
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="sm"
+                                    className="h-7 px-3 text-xs bg-violet-600 hover:bg-violet-700 text-white font-medium shadow-xs"
+                                    onClick={() => handleSaveEdit(card.id)}
+                                  >
+                                    Salvar
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="relative group/msg">
+                                <div
+                                  className={`rounded-lg p-3 border text-[13px] whitespace-pre-wrap font-sans leading-relaxed transition-colors ${
+                                    customTexts[card.id] !== undefined
+                                      ? 'bg-amber-50/60 border-amber-200/80 text-zinc-800'
+                                      : 'bg-zinc-50/90 border-zinc-100/90 text-zinc-700'
+                                  }`}
+                                >
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1">
+                                      {customTexts[card.id] ?? card.text}
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 px-1.5 text-[11px] text-violet-600 hover:text-violet-800 hover:bg-violet-100/70 -mr-1 -mt-1 shrink-0 font-medium flex items-center gap-1"
+                                      onClick={() => handleStartEdit(card.id, card.text)}
+                                      title="Editar texto para este envio"
+                                    >
+                                      <Pencil className="h-3 w-3" />
+                                      Editar
+                                    </Button>
+                                  </div>
+                                </div>
+                                {customTexts[card.id] !== undefined && (
+                                  <div className="mt-1 flex items-center justify-between text-[11px] text-amber-700 px-0.5">
+                                    <span className="flex items-center gap-1">
+                                      <span className="h-1.5 w-1.5 rounded-full bg-amber-500 inline-block" />
+                                      Texto editado (válido apenas para este envio)
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleResetCardText(card.id)}
+                                      className="text-zinc-400 hover:text-zinc-600 underline text-[10.5px]"
+                                    >
+                                      Restaurar original
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            )}
 
                             {/* Subtle hint that footer is appended on send/copy */}
                             <div className="mt-2 text-[11px] text-zinc-400 flex items-center gap-1.5 px-0.5">
