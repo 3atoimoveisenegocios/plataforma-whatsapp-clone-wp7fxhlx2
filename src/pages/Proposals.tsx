@@ -17,6 +17,7 @@ import {
   PenTool,
   Trophy,
   Search,
+  Clock,
   X,
   Pencil,
 } from 'lucide-react'
@@ -40,6 +41,10 @@ export type ProposalCardCategory =
   | 'contrato_conferencia'
   | 'assinatura'
   | 'finalizacao'
+  | 'docs_aprovados'
+  | 'docs_reprovados'
+  | 'docs_pendentes'
+  | 'docs_correcao'
 
 export interface CategoryVisual {
   label: string
@@ -142,6 +147,50 @@ export const CATEGORY_VISUALS: Record<ProposalCardCategory, CategoryVisual> = {
     badgeBorder: 'border-fuchsia-200/60',
     accentBorder: 'group-hover:border-fuchsia-400/60',
   },
+  docs_aprovados: {
+    label: 'Documentos Aprovados',
+    icon: CheckCircle2,
+    bannerGradient: 'from-emerald-600 via-teal-600 to-emerald-700',
+    iconBg: 'bg-white/20 backdrop-blur-xs text-white border border-white/30',
+    iconColor: 'text-white',
+    badgeBg: 'bg-emerald-50/90',
+    badgeText: 'text-emerald-700',
+    badgeBorder: 'border-emerald-200/60',
+    accentBorder: 'group-hover:border-emerald-400/60',
+  },
+  docs_reprovados: {
+    label: 'Documentos Reprovados',
+    icon: XCircle,
+    bannerGradient: 'from-rose-600 via-red-600 to-rose-700',
+    iconBg: 'bg-white/20 backdrop-blur-xs text-white border border-white/30',
+    iconColor: 'text-white',
+    badgeBg: 'bg-rose-50/90',
+    badgeText: 'text-rose-700',
+    badgeBorder: 'border-rose-200/60',
+    accentBorder: 'group-hover:border-rose-400/60',
+  },
+  docs_pendentes: {
+    label: 'Documentos Pendentes',
+    icon: Clock,
+    bannerGradient: 'from-amber-500 via-orange-500 to-amber-600',
+    iconBg: 'bg-white/20 backdrop-blur-xs text-white border border-white/30',
+    iconColor: 'text-white',
+    badgeBg: 'bg-amber-50/90',
+    badgeText: 'text-amber-800',
+    badgeBorder: 'border-amber-200/60',
+    accentBorder: 'group-hover:border-amber-400/60',
+  },
+  docs_correcao: {
+    label: 'Necessitam de Correção',
+    icon: AlertCircle,
+    bannerGradient: 'from-amber-600 via-yellow-600 to-orange-600',
+    iconBg: 'bg-white/20 backdrop-blur-xs text-white border border-white/30',
+    iconColor: 'text-white',
+    badgeBg: 'bg-amber-50/90',
+    badgeText: 'text-amber-800',
+    badgeBorder: 'border-amber-200/60',
+    accentBorder: 'group-hover:border-amber-400/60',
+  },
 }
 
 export const WHATSAPP_FOOTER = `LINK DO PORTAL: https://portaldocliente.3atoimoveis.com.br/
@@ -171,6 +220,10 @@ export const CATEGORY_FALLBACK_IMAGES: Record<ProposalCardCategory, string> = {
   contrato_conferencia: getGoogleDriveMediaUrl('1Yd4GunDoxffJQaO3gfeTbWhyeVByqKNE'),
   assinatura: getGoogleDriveMediaUrl('11J-2t6yRiyJxsptU339lcBv6zF38bn6t'),
   finalizacao: getGoogleDriveMediaUrl('1U9zyaz18arnXudH93SNTvxNXIfwNv63H'),
+  docs_aprovados: getGoogleDriveMediaUrl('1RQVIPOQsMj9q_NvmgPstnUDpcui3St8J'),
+  docs_reprovados: getGoogleDriveMediaUrl('13GT8w7Jtij891gmwQeewk1AlK8nYXl0d'),
+  docs_pendentes: getGoogleDriveMediaUrl('16GxEcZs28GOCqmr_Cu9cju8TjgmQtxS1'),
+  docs_correcao: getGoogleDriveMediaUrl('1vV8Pw4sBXAYfVv8M1w7GDq5A7HXuXREb'),
 }
 
 /** Fallback padrão por categoria para exibição no painel */
@@ -183,6 +236,10 @@ export const CATEGORY_FALLBACK_THUMBNAILS: Record<ProposalCardCategory, string> 
   contrato_conferencia: getGoogleDriveThumbnailUrl('1Yd4GunDoxffJQaO3gfeTbWhyeVByqKNE'),
   assinatura: getGoogleDriveThumbnailUrl('11J-2t6yRiyJxsptU339lcBv6zF38bn6t'),
   finalizacao: getGoogleDriveThumbnailUrl('1U9zyaz18arnXudH93SNTvxNXIfwNv63H'),
+  docs_aprovados: getGoogleDriveThumbnailUrl('1RQVIPOQsMj9q_NvmgPstnUDpcui3St8J'),
+  docs_reprovados: getGoogleDriveThumbnailUrl('13GT8w7Jtij891gmwQeewk1AlK8nYXl0d'),
+  docs_pendentes: getGoogleDriveThumbnailUrl('16GxEcZs28GOCqmr_Cu9cju8TjgmQtxS1'),
+  docs_correcao: getGoogleDriveThumbnailUrl('1vV8Pw4sBXAYfVv8M1w7GDq5A7HXuXREb'),
 }
 
 // Mantido para compatibilidade retroativa com eventuais imports
@@ -190,8 +247,13 @@ export const CATEGORY_COVER_IMAGES: Record<ProposalCardCategory, string> = CATEG
 
 export function formatWhatsAppMessage(cardText: string, cardTitle?: string): string {
   const trimmed = cardText.trimEnd()
-  const header = cardTitle ? `*${cardTitle.trim()}*\n\n` : ''
-  return `${header}${trimmed}\n\n${WHATSAPP_FOOTER}`
+  const header = cardTitle ? `*${cardTitle.trim()}*` : ''
+  if (trimmed) {
+    return header
+      ? `${header}\n\n${trimmed}\n\n${WHATSAPP_FOOTER}`
+      : `${trimmed}\n\n${WHATSAPP_FOOTER}`
+  }
+  return header ? `${header}\n\n${WHATSAPP_FOOTER}` : WHATSAPP_FOOTER
 }
 
 export interface ProposalMessageCard {
@@ -202,6 +264,8 @@ export interface ProposalMessageCard {
   driveId: string
   mediaUrl: string
   displayUrl: string
+  isFreeText?: boolean
+  placeholder?: string
 }
 
 export interface ProposalSection {
@@ -327,6 +391,51 @@ Estando tudo correto, avançaremos para a assinatura.`,
 
 Por gentileza, acesse Negociações e clique em Assinar na D4Sign, identificado pela cor laranja. Você será redirecionado para realizar a assinatura do contrato.`,
       },
+      {
+        id: 'cn-docs-aprovados',
+        title: 'Documentos Aprovados',
+        category: 'docs_aprovados',
+        driveId: '1RQVIPOQsMj9q_NvmgPstnUDpcui3St8J',
+        mediaUrl: getGoogleDriveMediaUrl('1RQVIPOQsMj9q_NvmgPstnUDpcui3St8J'),
+        displayUrl: getGoogleDriveThumbnailUrl('1RQVIPOQsMj9q_NvmgPstnUDpcui3St8J'),
+        text: '',
+        isFreeText: true,
+        placeholder: 'Digite aqui os detalhes dos documentos aprovados para o cliente...',
+      },
+      {
+        id: 'cn-docs-reprovados',
+        title: 'Documentos Reprovados',
+        category: 'docs_reprovados',
+        driveId: '13GT8w7Jtij891gmwQeewk1AlK8nYXl0d',
+        mediaUrl: getGoogleDriveMediaUrl('13GT8w7Jtij891gmwQeewk1AlK8nYXl0d'),
+        displayUrl: getGoogleDriveThumbnailUrl('13GT8w7Jtij891gmwQeewk1AlK8nYXl0d'),
+        text: '',
+        isFreeText: true,
+        placeholder:
+          'Digite aqui os detalhes e motivos dos documentos reprovados para o cliente...',
+      },
+      {
+        id: 'cn-docs-pendentes',
+        title: 'Documentos Pendentes',
+        category: 'docs_pendentes',
+        driveId: '16GxEcZs28GOCqmr_Cu9cju8TjgmQtxS1',
+        mediaUrl: getGoogleDriveMediaUrl('16GxEcZs28GOCqmr_Cu9cju8TjgmQtxS1'),
+        displayUrl: getGoogleDriveThumbnailUrl('16GxEcZs28GOCqmr_Cu9cju8TjgmQtxS1'),
+        text: '',
+        isFreeText: true,
+        placeholder: 'Digite aqui os documentos que ainda estão pendentes para o cliente enviar...',
+      },
+      {
+        id: 'cn-docs-correcao',
+        title: 'Documentos Necessitam de Correção',
+        category: 'docs_correcao',
+        driveId: '1vV8Pw4sBXAYfVv8M1w7GDq5A7HXuXREb',
+        mediaUrl: getGoogleDriveMediaUrl('1vV8Pw4sBXAYfVv8M1w7GDq5A7HXuXREb'),
+        displayUrl: getGoogleDriveThumbnailUrl('1vV8Pw4sBXAYfVv8M1w7GDq5A7HXuXREb'),
+        text: '',
+        isFreeText: true,
+        placeholder: 'Digite aqui quais documentos precisam de correção e o que corrigir...',
+      },
     ],
   },
   {
@@ -442,6 +551,52 @@ Estando tudo correto, avançaremos para a assinatura.`,
 
 Por gentileza, acesse Minhas Propostas e clique em Assinar na D4Sign, identificado pela cor laranja. Você será redirecionado para realizar a assinatura do contrato.`,
       },
+      {
+        id: 'pmp-docs-aprovados',
+        title: 'Documentos Aprovados',
+        category: 'docs_aprovados',
+        driveId: '1RQVIPOQsMj9q_NvmgPstnUDpcui3St8J',
+        mediaUrl: getGoogleDriveMediaUrl('1RQVIPOQsMj9q_NvmgPstnUDpcui3St8J'),
+        displayUrl: getGoogleDriveThumbnailUrl('1RQVIPOQsMj9q_NvmgPstnUDpcui3St8J'),
+        text: '',
+        isFreeText: true,
+        placeholder: 'Digite aqui os detalhes dos documentos aprovados para o proprietário...',
+      },
+      {
+        id: 'pmp-docs-reprovados',
+        title: 'Documentos Reprovados',
+        category: 'docs_reprovados',
+        driveId: '13GT8w7Jtij891gmwQeewk1AlK8nYXl0d',
+        mediaUrl: getGoogleDriveMediaUrl('13GT8w7Jtij891gmwQeewk1AlK8nYXl0d'),
+        displayUrl: getGoogleDriveThumbnailUrl('13GT8w7Jtij891gmwQeewk1AlK8nYXl0d'),
+        text: '',
+        isFreeText: true,
+        placeholder:
+          'Digite aqui os detalhes e motivos dos documentos reprovados para o proprietário...',
+      },
+      {
+        id: 'pmp-docs-pendentes',
+        title: 'Documentos Pendentes',
+        category: 'docs_pendentes',
+        driveId: '16GxEcZs28GOCqmr_Cu9cju8TjgmQtxS1',
+        mediaUrl: getGoogleDriveMediaUrl('16GxEcZs28GOCqmr_Cu9cju8TjgmQtxS1'),
+        displayUrl: getGoogleDriveThumbnailUrl('16GxEcZs28GOCqmr_Cu9cju8TjgmQtxS1'),
+        text: '',
+        isFreeText: true,
+        placeholder:
+          'Digite aqui os documentos que ainda estão pendentes para o proprietário enviar...',
+      },
+      {
+        id: 'pmp-docs-correcao',
+        title: 'Documentos Necessitam de Correção',
+        category: 'docs_correcao',
+        driveId: '1vV8Pw4sBXAYfVv8M1w7GDq5A7HXuXREb',
+        mediaUrl: getGoogleDriveMediaUrl('1vV8Pw4sBXAYfVv8M1w7GDq5A7HXuXREb'),
+        displayUrl: getGoogleDriveThumbnailUrl('1vV8Pw4sBXAYfVv8M1w7GDq5A7HXuXREb'),
+        text: '',
+        isFreeText: true,
+        placeholder: 'Digite aqui quais documentos precisam de correção e o que corrigir...',
+      },
     ],
   },
   {
@@ -554,7 +709,9 @@ export default function Proposals() {
     return SECTIONS.map((section) => {
       const matchingCards = section.cards.filter((card) => {
         const titleMatch = card.title.toLowerCase().includes(term)
-        const textMatch = card.text.toLowerCase().includes(term)
+        const custom = customTexts[card.id] || ''
+        const textMatch =
+          card.text.toLowerCase().includes(term) || custom.toLowerCase().includes(term)
         return titleMatch || textMatch
       })
       return {
@@ -562,7 +719,7 @@ export default function Proposals() {
         cards: matchingCards,
       }
     }).filter((section) => section.cards.length > 0)
-  }, [searchTerm])
+  }, [searchTerm, customTexts])
 
   const totalMatchingCards = useMemo(() => {
     return filteredSections.reduce((acc, s) => acc + s.cards.length, 0)
@@ -605,8 +762,11 @@ export default function Proposals() {
     }
 
     // Se estiver em modo de edição ao disparar, utiliza o rascunho atual
-    const effectiveText =
-      editingCardId === card.id
+    const effectiveText = card.isFreeText
+      ? editingCardId === card.id
+        ? (draftTexts[card.id] ?? customTexts[card.id] ?? '')
+        : (customTexts[card.id] ?? '')
+      : editingCardId === card.id
         ? (draftTexts[card.id] ?? customTexts[card.id] ?? card.text)
         : (customTexts[card.id] ?? card.text)
 
@@ -937,8 +1097,11 @@ export default function Proposals() {
                             size="icon"
                             className="h-8 w-8 text-zinc-400 hover:text-zinc-700 shrink-0"
                             onClick={() => {
-                              const activeText =
-                                editingCardId === card.id
+                              const activeText = card.isFreeText
+                                ? editingCardId === card.id
+                                  ? (draftTexts[card.id] ?? customTexts[card.id] ?? '')
+                                  : (customTexts[card.id] ?? '')
+                                : editingCardId === card.id
                                   ? (draftTexts[card.id] ?? customTexts[card.id] ?? card.text)
                                   : (customTexts[card.id] ?? card.text)
                               handleCopyText(card.id, activeText, card.title)
@@ -955,7 +1118,40 @@ export default function Proposals() {
 
                         <CardContent className="pt-3 px-4 pb-3 flex-1 flex flex-col justify-between">
                           <div>
-                            {editingCardId === card.id ? (
+                            {card.isFreeText ? (
+                              <div className="space-y-1.5">
+                                <div className="flex items-center justify-between text-[11.5px] font-medium text-zinc-600 px-0.5">
+                                  <span className="flex items-center gap-1 text-violet-700 font-semibold">
+                                    <Pencil className="h-3 w-3" />
+                                    Mensagem personalizada
+                                  </span>
+                                  {customTexts[card.id] && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleResetCardText(card.id)}
+                                      className="text-zinc-400 hover:text-zinc-600 underline text-[10.5px]"
+                                    >
+                                      Limpar campo
+                                    </button>
+                                  )}
+                                </div>
+                                <Textarea
+                                  value={customTexts[card.id] ?? ''}
+                                  onChange={(e) =>
+                                    setCustomTexts((prev) => ({
+                                      ...prev,
+                                      [card.id]: e.target.value,
+                                    }))
+                                  }
+                                  rows={4}
+                                  className="text-[13px] leading-relaxed bg-zinc-50/70 hover:bg-white focus:bg-white border-zinc-200 focus-visible:border-violet-400 focus-visible:ring-violet-500/20 resize-y min-h-[96px] placeholder:text-zinc-400 transition-colors"
+                                  placeholder={
+                                    card.placeholder ||
+                                    'Digite aqui a mensagem livre para este documento (cada envio é diferente)...'
+                                  }
+                                />
+                              </div>
+                            ) : editingCardId === card.id ? (
                               <div className="space-y-2">
                                 <div className="flex items-center justify-between text-xs font-semibold text-violet-700">
                                   <span className="flex items-center gap-1">
