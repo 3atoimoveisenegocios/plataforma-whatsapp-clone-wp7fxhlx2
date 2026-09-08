@@ -27,7 +27,7 @@ import { toast } from '@/hooks/use-toast'
 
 export const PORTAL_CADASTRO_FOOTER = `Site: www.3atoimoveis.com.br
 Tel e Whatsapp: (11) 4422-7729
-Email: atendimento@3atoimoveis.com.br | 3atoimoveis.com.br`
+Email: atendimento@3atoimoveis.com.br | 3atoimoveis@gmail.com`
 
 export function getGoogleDriveMediaUrl(driveId: string): string {
   return `https://drive.google.com/uc?export=download&id=${driveId}`
@@ -691,7 +691,7 @@ export default function PropertyRegistrationPortal() {
                           </span>
                           <p>Site: www.3atoimoveis.com.br</p>
                           <p>Tel e Whatsapp: (11) 4422-7729</p>
-                          <p>Email: atendimento@3atoimoveis.com.br | 3atoimoveis.com.br</p>
+                          <p>Email: atendimento@3atoimoveis.com.br | 3atoimoveis@gmail.com</p>
                         </div>
                       </div>
 
