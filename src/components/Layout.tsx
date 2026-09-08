@@ -8,6 +8,7 @@ import {
   Kanban,
   BarChart3,
   FileText,
+  Building2,
 } from 'lucide-react'
 import { useAuth } from '@/hooks/use-auth'
 import { useEffect, useState } from 'react'
@@ -103,6 +104,11 @@ export default function Layout() {
   const navItems = [
     { to: '/inbox', label: 'Caixa de Entrada', icon: MessageSquare },
     { to: '/propostas', label: 'Propostas', icon: FileText },
+    {
+      to: '/portal-cadastro',
+      label: 'Portal de Cadastro de Imóveis dos Clientes',
+      icon: Building2,
+    },
     { to: '/pipeline', label: 'Pipeline', icon: Kanban },
     { to: '/dashboard', label: 'Dashboard', icon: BarChart3 },
     { to: '/agents', label: 'Agentes IA', icon: Bot },

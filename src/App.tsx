@@ -13,6 +13,7 @@ import Agents from './pages/Agents'
 import Pipeline from './pages/Pipeline'
 import Dashboard from './pages/Dashboard'
 import Proposals from './pages/Proposals'
+import PropertyRegistrationPortal from './pages/PropertyRegistrationPortal'
 import NotFound from './pages/NotFound'
 
 const App = () => (
@@ -29,6 +30,7 @@ const App = () => (
             <Route path="/connection-setup" element={<ConnectionSetup />} />
             <Route path="/inbox" element={<Inbox />} />
             <Route path="/propostas" element={<Proposals />} />
+            <Route path="/portal-cadastro" element={<PropertyRegistrationPortal />} />
             <Route path="/agents" element={<Agents />} />
             <Route path="/pipeline" element={<Pipeline />} />
             <Route path="/dashboard" element={<Dashboard />} />
