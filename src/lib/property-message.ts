@@ -142,6 +142,12 @@ export function formatPropertyMessage(property: Property): string {
     lines.push(propertyUrl)
   }
 
+  if (property.virtual_tour_link) {
+    lines.push('')
+    lines.push('*Tour do Imóvel*')
+    lines.push(property.virtual_tour_link)
+  }
+
   if (property.youtube_link) {
     lines.push('')
     lines.push(`VÍDEO: ${property.youtube_link}`)

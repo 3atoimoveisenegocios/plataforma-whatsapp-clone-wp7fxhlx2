@@ -30,6 +30,7 @@ import {
   Building2,
   Lock,
   Youtube,
+  Compass,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { ContactSelector } from '@/components/inbox/ContactSelector'
@@ -477,6 +478,20 @@ export function PropertyCatalog({
                           </a>
                         ) : null
                       })()}
+                      {property.virtual_tour_link &&
+                        (() => {
+                          return (
+                            <a
+                              href={property.virtual_tour_link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="w-full h-8 flex items-center justify-center gap-1.5 text-xs font-medium text-indigo-600 hover:text-indigo-700 border border-indigo-200 rounded-md hover:bg-indigo-50 transition-colors"
+                            >
+                              <Compass className="h-3.5 w-3.5" />
+                              Tour do Imóvel
+                            </a>
+                          )
+                        })()}
                       {property.youtube_link &&
                         (() => {
                           const videoId = getYouTubeVideoId(property.youtube_link)

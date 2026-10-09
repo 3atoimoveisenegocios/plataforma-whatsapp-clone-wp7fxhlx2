@@ -11,6 +11,7 @@ export interface Property {
   images: string[]
   cover_image: string | null
   external_link: string
+  virtual_tour_link?: string | null
   youtube_link?: string | null
   slug?: string | null
   price_sale?: number | null
