@@ -6,11 +6,14 @@
  * - A memória da conversa fica na OpenAI: a primeira mensagem cria uma sessão
  *   (POST /v1/agents/sessions) e o session_id é salvo no contato (whatsapp_contacts.ai_session_id).
  *   Mensagens seguintes continuam a sessão (POST /v1/agents/sessions/{id}/events).
- * - Com stream:false a criação retorna a SESSÃO (turn assíncrono, sem texto) — o hook faz
- *   polling de GET /v1/agents/sessions/{id}/items até a resposta do agente aparecer.
- *   Shape confirmado com dados reais (v0.0.78): a resposta NÃO está no output_text
- *   do root nem em itens type='message' — está no item com phase='final_answer',
- *   cujo content[] tem blocos type='output_text' com o texto em .text.
+ * - A resposta é extraída SEMPRE do turno que acabou de completar: antes de enviar
+ *   o input o hook anota o turno mais recente da sessão (priorTurnId) e o instante
+ *   t0; depois espera um turno NOVO (criado após o input) — ou o turno ainda ativo
+ *   que recebeu o input (steer) — terminar, e lê os itens DELE via
+ *   GET /v1/agents/sessions/{sid}/turns/{turn_id}/items. O texto está no item com
+ *   phase='final_answer' (content[] com blocos type='output_text'), shape confirmado
+ *   com dados reais (v0.0.78). NUNCA se reutiliza final_answer de turno anterior:
+ *   turno completado sem final_answer = falha (ai_error, nada enviado ao cliente).
  * - Em caso de falha da IA, NADA é enviado ao cliente: registra em whatsapp_messages
  *   com automation_type='ai_error' e loga o erro.
  *
@@ -28,6 +31,9 @@ onRecordAfterCreateSuccess(async (e) => {
   const OPENAI_BETA_HEADER = 'agents=v1'
   const AGENTS_BASE = 'https://api.openai.com/v1/agents'
   const DEBOUNCE_MS = 5000
+  // Tolerância de relógio entre este servidor e a OpenAI ao comparar created_at
+  // de turnos com o instante t0 do envio do input.
+  const CLOCK_SKEW_MS = 60000
 
   function getOpenAiKey() {
     const key = $secrets.get('OPENAI_API_KEY') || $os.getenv('OPENAI_API_KEY') || ''
@@ -85,54 +91,27 @@ onRecordAfterCreateSuccess(async (e) => {
     record.set(field, JSON.stringify(trimmed))
   }
 
-  // Extrai o texto de resposta do agente a partir do shape de items/output da
-  // Agents API: itens type='message' do root agent com content[] type='output_text'.
-  function extractReplyText(data) {
-    if (!data) return ''
-
-    // Alguns endpoints devolvem output_text direto.
-    if (typeof data.output_text === 'string' && data.output_text.trim()) return data.output_text
-
-    // Shape REAL confirmado no diagnóstico (v0.0.78): a resposta do agente Iris
-    // aparece na lista de itens da sessão como um item com phase='final_answer',
-    // cujo content[] traz blocos type='output_text' com o texto em .text.
-    // NÃO está no root output_text, NEM em itens type='message'.
-    const candidates = Array.isArray(data.data)
-      ? data.data
-      : Array.isArray(data.output)
-        ? data.output
-        : Array.isArray(data)
-          ? data
-          : []
-
-    let best = ''
-    for (const item of candidates) {
-      if (!item || item.phase !== 'final_answer') continue
-      const contents = Array.isArray(item.content) ? item.content : []
-      let itemText = ''
-      for (const c of contents) {
-        if (c && c.type === 'output_text' && typeof c.text === 'string') itemText += c.text
-      }
-      if (itemText.trim()) best = itemText // itera até o último final_answer (mais recente)
+  function parseTs(value) {
+    if (!value) return 0
+    try {
+      const ms = Date.parse(String(value).replace(' ', 'T'))
+      return isNaN(ms) ? 0 : ms
+    } catch (_) {
+      return 0
     }
-    if (best) return best
+  }
 
-    // Fallbacks conservadores (caso o shape mude): root text ou resposta direta.
-    if (typeof data.text === 'string' && data.text.trim()) return data.text
-
-    // Itens type='message' com output_text (shape documentado da Responses API).
-    for (const item of candidates) {
-      if (!item || item.type !== 'message') continue
-      if (item.role && item.role !== 'assistant') continue
-      const contents = Array.isArray(item.content) ? item.content : []
-      for (const c of contents) {
-        if (c && c.type === 'output_text' && typeof c.text === 'string' && c.text.trim()) {
-          return c.text
-        }
-      }
-    }
-
-    return ''
+  // Ordena uma lista de objetos da API do mais novo para o mais antigo
+  // (por created_at; sem created_at mantém a ordem recebida — estável).
+  function sortByCreatedDesc(list) {
+    const copy = []
+    for (const item of list) copy.push(item)
+    copy.sort(function (a, b) {
+      const am = parseTs(a && a.created_at)
+      const bm = parseTs(b && b.created_at)
+      return bm - am
+    })
+    return copy
   }
 
   function callOpenAiAgentsApi(url, apiKey, body, timeout, extraHeaders) {
@@ -149,43 +128,8 @@ onRecordAfterCreateSuccess(async (e) => {
     return $http.send(options)
   }
 
-  // Consulta os últimos items da sessão (mais recentes primeiro) e extrai a
-  // resposta do agente, se já houver. `minItems` pula respostas de turns
-  // anteriores (a resposta que já estava lá quando o turn começou).
-  function getSessionReply(sessionId, apiKey, minItems) {
-    let res = null
-    try {
-      res = callOpenAiAgentsApi(
-        `${AGENTS_BASE}/sessions/${sessionId}/items?order=desc&limit=20`,
-        apiKey,
-        null,
-        30,
-      )
-    } catch (err) {
-      $app.logger().warn('AI session items fetch threw', 'error', String(err))
-      return null
-    }
-    if (res.statusCode !== 200) {
-      $app
-        .logger()
-        .warn(
-          'AI session items fetch failed',
-          'status',
-          res.statusCode,
-          'body',
-          JSON.stringify(res.json || {}),
-        )
-      return null
-    }
-    const items = res.json && Array.isArray(res.json.data) ? res.json.data : []
-    if (items.length <= (minItems || 0)) return null
-    const text = extractReplyText({ data: items })
-    return text ? { text } : null
-  }
-
-  // Consulta o estado do turn corrente (status, erro) — para diagnóstico e para
-  // abortar cedo quando o turn falhou.
-  function getSessionTurns(sessionId, apiKey) {
+  // Lista os turns da sessão, do mais novo para o mais antigo.
+  function listSessionTurns(sessionId, apiKey) {
     try {
       const res = callOpenAiAgentsApi(
         `${AGENTS_BASE}/sessions/${sessionId}/turns`,
@@ -193,40 +137,246 @@ onRecordAfterCreateSuccess(async (e) => {
         null,
         30,
       )
-      if (res.statusCode === 200) return res.json
+      if (res.statusCode === 200 && res.json && Array.isArray(res.json.data)) {
+        return sortByCreatedDesc(res.json.data)
+      }
+      $app.logger().warn('AI session turns fetch failed', 'status', res.statusCode)
     } catch (err) {
       $app.logger().warn('AI session turns fetch threw', 'error', String(err))
     }
-    return null
+    return []
   }
 
-  // Espera o turn da sessão terminar (items com resposta do agente), com polling.
-  function pollForReply(sessionId, apiKey, maxAttempts, delayMs, minItems) {
-    for (let i = 0; i < maxAttempts; i++) {
-      const found = getSessionReply(sessionId, apiKey, minItems || 0)
-      if (found && found.text) return found.text
+  // Itens de UM turno específico (endpoint por turn) — nunca mistura itens de
+  // turns anteriores da sessão. Devolve do mais novo para o mais antigo.
+  function getTurnItems(sessionId, turnId, apiKey) {
+    try {
+      const res = callOpenAiAgentsApi(
+        `${AGENTS_BASE}/sessions/${sessionId}/turns/${turnId}/items`,
+        apiKey,
+        null,
+        30,
+      )
+      if (res.statusCode === 200 && res.json && Array.isArray(res.json.data)) {
+        return sortByCreatedDesc(res.json.data)
+      }
+      $app.logger().warn('AI turn items fetch failed', 'status', res.statusCode, 'turn', turnId)
+    } catch (err) {
+      $app.logger().warn('AI turn items fetch threw', 'error', String(err))
+    }
+    return []
+  }
 
-      const turns = getSessionTurns(sessionId, apiKey)
-      if (turns && Array.isArray(turns.data)) {
-        for (const t of turns.data) {
-          if (t && (t.status === 'failed' || t.type === 'turn.failed')) {
-            $app
-              .logger()
-              .error(
-                'AI session turn failed',
-                'session',
-                sessionId,
-                'error',
-                JSON.stringify(t.error || {}),
-              )
-            return ''
+  // Extrai o texto do final_answer mais recente de uma lista de itens JÁ do turno
+  // informado (itens do endpoint por turn; turn_id conferido quando presente).
+  // Ignora itens incompletos. Devolve '' se o turno não tem final_answer completo.
+  function extractLastFinalAnswer(items, turnId) {
+    for (const item of items) {
+      if (!item || item.phase !== 'final_answer') continue
+      if (turnId && item.turn_id && item.turn_id !== turnId) continue
+      if (item.status && item.status !== 'completed') continue
+      const contents = Array.isArray(item.content) ? item.content : []
+      let itemText = ''
+      for (const c of contents) {
+        if (c && c.type === 'output_text' && typeof c.text === 'string') itemText += c.text
+      }
+      if (itemText.trim()) return itemText.trim()
+    }
+    return ''
+  }
+
+  // Extração do corpo da RESPOSTA DE CRIAÇÃO de sessão (sessão nova: qualquer
+  // final_answer presente é necessariamente do turno atual, pois não há turnos antigos).
+  function extractReplyText(data) {
+    if (!data) return ''
+    if (typeof data.output_text === 'string' && data.output_text.trim()) return data.output_text
+    const candidates = Array.isArray(data.data)
+      ? data.data
+      : Array.isArray(data.output)
+        ? data.output
+        : Array.isArray(data)
+          ? data
+          : []
+    return extractLastFinalAnswer(candidates, '')
+  }
+
+  // Espera o turno disparado pelo input ATUAL terminar e devolve o final_answer
+  // DELE — nunca a resposta de um turno anterior.
+  //
+  // opts.priorTurnId  : turno mais novo que já existia ANTES do input ('' se desconhecido).
+  // opts.pinnedTurnId : quando a resposta do POST de input trouxe o id do turno,
+  //                     só esse turno vale como alvo.
+  // opts.t0Ms         : Date.now() imediatamente antes do envio do input.
+  //
+  // Retorna { text, hardFail, reason }:
+  // - text: resposta do turno atual ('' se não houver);
+  // - hardFail: true quando o turno atual terminou sem final_answer (falhou, foi
+  //   cancelado ou completou sem resposta) — NÃO se deve tentar de novo nem
+  //   reutilizar texto antigo; registra ai_error e não envia nada.
+  // - hardFail false + text '': timeout sem conseguir atribuir resposta a um turno
+  //   atual (o chamador decide: nova sessão como retry).
+  function pollForTurnReply(sessionId, apiKey, opts) {
+    const priorTurnId = opts && opts.priorTurnId ? opts.priorTurnId : ''
+    const pinnedTurnId = opts && opts.pinnedTurnId ? opts.pinnedTurnId : ''
+    const t0Ms = opts && opts.t0Ms ? opts.t0Ms : 0
+    const maxAttempts = opts && opts.maxAttempts ? opts.maxAttempts : 10
+    const delaySec = opts && opts.delaySec ? opts.delaySec : 3
+
+    for (let i = 0; i < maxAttempts; i++) {
+      if (i > 0) {
+        try {
+          $http.send({ url: 'https://httpbin.org/delay/' + delaySec, timeout: delaySec + 7 })
+        } catch (_) {}
+      }
+
+      const turns = listSessionTurns(sessionId, apiKey)
+      if (turns.length === 0) {
+        $app.logger().info('AI turn polling: no turns listed yet', 'attempt', i + 1)
+        continue
+      }
+
+      // Turno alvo = o turno criado pelo input ATUAL.
+      let target = null
+      for (const t of turns) {
+        if (!t || !t.id) continue
+        if (pinnedTurnId) {
+          // Com turno fixado pela resposta do POST, só ele serve.
+          if (t.id === pinnedTurnId) {
+            target = t
+            break
+          }
+          continue
+        }
+        if (t.id === priorTurnId) continue
+        // Nunca aceitar turno criado ANTES do envio do input (resposta antiga).
+        const createdMs = parseTs(t.created_at)
+        if (createdMs > 0 && t0Ms > 0 && createdMs < t0Ms - CLOCK_SKEW_MS) continue
+        target = t
+        break
+      }
+
+      // Sem turno novo: o input pode ter direcionado (steer) o turno que já
+      // estava ativo. Só vale se esse turno AINDA estiver rodando — se ele já
+      // tinha terminado antes do input, a resposta dele NÃO serve.
+      if (!target && !pinnedTurnId && priorTurnId) {
+        for (const t of turns) {
+          if (t && t.id === priorTurnId) {
+            const st = t.status
+            if (st === 'queued' || st === 'in_progress' || st === 'waiting') target = t
+            break
           }
         }
       }
-      $app.logger().info('AI session polling', 'attempt', i + 1, 'session', sessionId)
-      $http.send({ url: 'https://httpbin.org/delay/3', timeout: 10 })
+
+      if (!target) {
+        $app.logger().info('AI turn polling: current turn not identified yet', 'attempt', i + 1)
+        continue
+      }
+
+      const st = target.status
+      if (st === 'failed' || st === 'cancelled' || st === 'incomplete') {
+        $app
+          .logger()
+          .error(
+            'AI turn failed',
+            'session',
+            sessionId,
+            'turn',
+            target.id,
+            'status',
+            st,
+            'error',
+            JSON.stringify(target.error || {}),
+          )
+        return { text: '', hardFail: true, reason: 'turno atual ' + st }
+      }
+      if (st === 'completed') {
+        const items = getTurnItems(sessionId, target.id, apiKey)
+        const text = extractLastFinalAnswer(items, target.id)
+        if (text) return { text: text, hardFail: false, reason: '' }
+        // Turno atual completou SEM final_answer: falha — nunca cair no texto
+        // de um turno anterior.
+        $app
+          .logger()
+          .error(
+            'AI turn completed without final_answer',
+            'session',
+            sessionId,
+            'turn',
+            target.id,
+            'items',
+            items.length,
+          )
+        return { text: '', hardFail: true, reason: 'turno atual completou sem final_answer' }
+      }
+      // Turno atual ainda rodando (queued/in_progress/waiting): continua esperando.
+      $app
+        .logger()
+        .info(
+          'AI turn polling: turn still running',
+          'attempt',
+          i + 1,
+          'turn',
+          target.id,
+          'status',
+          st,
+        )
     }
-    return ''
+
+    $app.logger().error('AI turn polling timeout without final_answer', 'session', sessionId)
+    return { text: '', hardFail: false, reason: 'timeout aguardando o turno atual completar' }
+  }
+
+  // Cria uma NOVA sessão já com o input e aguarda o primeiro turno dela completar.
+  // Retorna { sessionId, reply, hardFail, reason }.
+  function createSessionAndGetReply(apiKey, combinedBody) {
+    try {
+      const sessionRes = callOpenAiAgentsApi(`${AGENTS_BASE}/sessions`, apiKey, {
+        agent_id: OPENAI_AGENT_ID,
+        environment: { type: 'none' },
+        input: combinedBody,
+        stream: false,
+      })
+
+      if (sessionRes.statusCode !== 200 && sessionRes.statusCode !== 201) {
+        $app
+          .logger()
+          .error(
+            'AI session creation failed',
+            'status',
+            sessionRes.statusCode,
+            'body',
+            JSON.stringify(sessionRes.json || {}),
+          )
+        return {
+          sessionId: '',
+          reply: '',
+          hardFail: false,
+          reason: 'criação de sessão falhou (status ' + sessionRes.statusCode + ')',
+        }
+      }
+
+      const data = sessionRes.json || {}
+      const sid = data.id ? String(data.id) : ''
+      let reply = extractReplyText(data)
+      if (reply || !sid) {
+        return { sessionId: sid, reply: reply, hardFail: false, reason: '' }
+      }
+
+      // Sessão nova: o único turno existente é o criado por este input.
+      const t0Ms = Date.now()
+      const pr = pollForTurnReply(sid, apiKey, { priorTurnId: '', t0Ms: t0Ms, maxAttempts: 15 })
+      if (pr.text) return { sessionId: sid, reply: pr.text, hardFail: false, reason: '' }
+      return { sessionId: sid, reply: '', hardFail: pr.hardFail, reason: pr.reason }
+    } catch (err) {
+      $app.logger().error('AI session creation threw', 'error', String(err))
+      return {
+        sessionId: '',
+        reply: '',
+        hardFail: false,
+        reason: 'criação de sessão lançou erro: ' + String(err),
+      }
+    }
   }
 
   function sendWhatsappText(instanceName, remoteJid, text, automationType, contact) {
@@ -394,8 +544,8 @@ onRecordAfterCreateSuccess(async (e) => {
     const currentMinutes = localDate.getUTCHours() * 60 + localDate.getUTCMinutes()
     const startParts = startTime.split(':').map(Number)
     const endParts = endTime.split(':').map(Number)
-    const startMinutes = (startParts[0] || 8) * 60 + (startParts[1] || 0)
-    const endMinutes = (endParts[0] || 18) * 60 + (endParts[1] || 0)
+    const startMinutes = (startParts[0] || 8) * 60 + startParts[1] * 1
+    const endMinutes = (endParts[0] || 18) * 60 + endParts[1] * 1
 
     const dayNames = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado']
     const currentDayName = dayNames[currentDayNum]
@@ -404,12 +554,12 @@ onRecordAfterCreateSuccess(async (e) => {
     const isWithinHours = currentMinutes >= startMinutes && currentMinutes <= endMinutes
 
     if (!isOperatingDay || !isWithinHours) {
-      const instance = $app.findRecordById('whatsapp_instances', agent.getString('instance_id'))
+      const outInstance = $app.findRecordById('whatsapp_instances', agent.getString('instance_id'))
       // Limpa as pendentes antes de sair (fora do horário, nada a responder).
       writeJsonArray(latestContact, 'ai_pending_ids', [])
       $app.saveNoValidate(latestContact)
       sendWhatsappText(
-        instance.getString('instance_name'),
+        outInstance.getString('instance_name'),
         latestContact.getString('remote_jid'),
         outOfHoursMessage,
         'out_of_hours',
@@ -460,12 +610,19 @@ onRecordAfterCreateSuccess(async (e) => {
 
   try {
     let reply = ''
+    let failReason = ''
 
     if (sessionId) {
       // Continua a sessão existente na OpenAI (memória da conversa fica lá).
       $app
         .logger()
         .info('AI session: continuing existing', 'session_id', sessionId, 'contact', contactId)
+
+      // Turno mais recente ANTES do input: serve de marca para identificar o
+      // turno NOVO que o input vai criar (nunca aceitar turnos anteriores).
+      const priorTurns = listSessionTurns(sessionId, apiKey)
+      const priorTurnId = priorTurns.length > 0 && priorTurns[0].id ? String(priorTurns[0].id) : ''
+      const t0Ms = Date.now()
 
       const eventsUrl = `${AGENTS_BASE}/sessions/${sessionId}/events`
       const eventPayload = {
@@ -483,6 +640,7 @@ onRecordAfterCreateSuccess(async (e) => {
       }
 
       let continuationOk = false
+      let pinnedTurnId = ''
       try {
         const eventsRes = callOpenAiAgentsApi(eventsUrl, apiKey, eventPayload, 90, {
           'Idempotency-Key': 'msgs-' + sourceIds.join('-'),
@@ -493,6 +651,16 @@ onRecordAfterCreateSuccess(async (e) => {
           eventsRes.statusCode === 202
         ) {
           continuationOk = true
+          // Se a resposta do POST trouxer o id do turno criado, fixa nele.
+          const evJson = eventsRes.json || {}
+          const candidates = [evJson.turn_id, evJson.id, evJson.turn && evJson.turn.id]
+          for (let ci = 0; ci < candidates.length; ci++) {
+            const cv = candidates[ci]
+            if (typeof cv === 'string' && cv.indexOf('turn') !== -1) {
+              pinnedTurnId = cv
+              break
+            }
+          }
         } else {
           $app
             .logger()
@@ -509,16 +677,36 @@ onRecordAfterCreateSuccess(async (e) => {
       }
 
       if (continuationOk) {
-        reply = pollForReply(sessionId, apiKey, 10, 3000, 0)
-        if (reply) {
+        const pr = pollForTurnReply(sessionId, apiKey, {
+          priorTurnId: priorTurnId,
+          pinnedTurnId: pinnedTurnId,
+          t0Ms: t0Ms,
+          maxAttempts: 10,
+          delaySec: 3,
+        })
+        if (pr.text) {
+          reply = pr.text
           $app
             .logger()
-            .info('AI session continued OK', 'session_id', sessionId, 'contact', contactId)
+            .info(
+              'AI session continued OK',
+              'session_id',
+              sessionId,
+              'contact',
+              contactId,
+              'reply_len',
+              reply.length,
+            )
+        } else if (pr.hardFail) {
+          // Turno atual terminou sem resposta: falha definitiva — NÃO reutiliza
+          // texto antigo e NÃO reenvia o input em nova sessão.
+          failReason = pr.reason
         }
       }
 
-      if (!reply) {
-        // Continuação falhou, expirou ou não trouxe texto — nova sessão (automático).
+      if (!reply && !failReason) {
+        // Continuação expirou/sem resposta atribuível ao turno atual — nova
+        // sessão como retry (o input é reenviado do zero).
         $app
           .logger()
           .warn(
@@ -530,37 +718,15 @@ onRecordAfterCreateSuccess(async (e) => {
       }
     }
 
-    if (!reply) {
-      // Cria uma nova sessão no agente salvo (primeira mensagem ou sessão expirada).
+    if (!reply && !failReason) {
+      // Cria uma nova sessão no agente salvo (primeira mensagem ou retry).
       $app.logger().info('AI session: creating new', 'agent', OPENAI_AGENT_ID, 'contact', contactId)
-      try {
-        const sessionRes = callOpenAiAgentsApi(`${AGENTS_BASE}/sessions`, apiKey, {
-          agent_id: OPENAI_AGENT_ID,
-          environment: { type: 'none' },
-          input: combinedBody,
-          stream: false,
-        })
-
-        if (sessionRes.statusCode === 200 || sessionRes.statusCode === 201) {
-          const data = sessionRes.json || {}
-          if (data.id) sessionId = data.id
-          reply = extractReplyText(data)
-          if (!reply && sessionId) {
-            reply = pollForReply(sessionId, apiKey, 15, 3000, 0)
-          }
-        } else {
-          $app
-            .logger()
-            .error(
-              'AI session creation failed',
-              'status',
-              sessionRes.statusCode,
-              'body',
-              JSON.stringify(sessionRes.json || {}),
-            )
-        }
-      } catch (err) {
-        $app.logger().error('AI session creation threw', 'error', String(err))
+      const created = createSessionAndGetReply(apiKey, combinedBody)
+      if (created.sessionId) sessionId = created.sessionId
+      if (created.reply) {
+        reply = created.reply
+      } else {
+        failReason = created.reason || 'nova sessão não retornou final_answer'
       }
     }
 
@@ -625,8 +791,9 @@ onRecordAfterCreateSuccess(async (e) => {
       saveAiErrorRecord(
         latestContact,
         instance,
-        'resposta vazia, obsoleta ou falha na chamada à OpenAI Agents API',
+        failReason || 'resposta vazia, obsoleta ou falha na chamada à OpenAI Agents API',
       )
+      $app.logger().error('AI reply not sent', 'contact', contactId, 'reason', failReason)
     }
   } catch (err) {
     saveAiErrorRecord(latestContact, instance, String(err))
