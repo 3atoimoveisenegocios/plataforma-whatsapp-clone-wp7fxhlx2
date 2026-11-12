@@ -24,12 +24,12 @@ routerAdd('GET', '/backend/v1/ai-e2e-test', (e) => {
     try {
       const contact = $app.findFirstRecordByFilter(
         'whatsapp_contacts',
-        "remote_jid = {:jid} && user_id = {:uid}",
+        'remote_jid = {:jid} && user_id = {:uid}',
         { jid: jid, uid: userId },
       )
       const msgs = $app.findRecordsByFilter(
         'whatsapp_messages',
-        "contact_id = {:cid}",
+        'contact_id = {:cid}',
         '-created',
         200,
         0,
@@ -68,7 +68,7 @@ routerAdd('GET', '/backend/v1/ai-e2e-test', (e) => {
   try {
     contact = $app.findFirstRecordByFilter(
       'whatsapp_contacts',
-      "remote_jid = {:jid} && user_id = {:uid}",
+      'remote_jid = {:jid} && user_id = {:uid}',
       { jid: jid, uid: userId },
     )
   } catch (_) {
@@ -83,7 +83,10 @@ routerAdd('GET', '/backend/v1/ai-e2e-test', (e) => {
     $app.saveNoValidate(contact)
   }
 
-  const text = step === '2' ? 'Segunda mensagem de teste: qual o horario de atendimento?' : 'Ola, voce tem apartamento com 2 quartos?'
+  const text =
+    step === '2'
+      ? 'Segunda mensagem de teste: qual o horario de atendimento?'
+      : 'Ola, voce tem apartamento com 2 quartos?'
 
   const msgsCol = $app.findCollectionByNameOrId('whatsapp_messages')
   const m = new Record(msgsCol)
