@@ -29,6 +29,19 @@
  *   30x2s (~60s). Nada mais muda: extração do final_answer do turno atual,
  *   dedupe por ai_processed_ids, debounce ~5s, descarte de resposta obsoleta,
  *   Secret OPENAI_API_KEY e NUNCA enviar erro ao cliente.
+ * - Mensagens 'in' com body VAZIO são ignoradas pela IA (não disparam rodada,
+ *   não entram no debounce, não entram no input da sessão) — o registro delas
+ *   no inbox permanece intacto (o hook só sai cedo, sem alterar o registro).
+ * - Descarte de obsoletas (antes de enviar): compara o instante da ÚLTIMA entrada
+ *   respondida por esta rodada (sent_at/created) contra TODAS as 'in' do contato
+ *   com body não-vazio. Vazias não contam nem bloqueiam. Se existe 'in' com texto
+ *   mais recente do que o que a rodada responde, NÃO envia — e NÃO marca as
+ *   fontes como processadas nem limpa as pendentes, para que a rodada mais
+ *   recente (que inclui o texto novo no input) responda tudo.
+ * v0.0.86: correção do out-of-order ("Obrigado" respondido DEPOIS de pergunta
+ *   nova): o check antigo só olhava a 'in' mais recente, e uma 'in' vazia logo
+ *   depois da pergunta nova (created maior) mascarava a pergunta. Agora o
+ *   descarte compara timestamps contra todas as 'in' não-vazias.
  */
 /* eslint-disable no-unused-vars */
 // JSVM (goja) não suporta funções async — o callback é síncrono (nada de await aqui).
@@ -339,70 +352,67 @@ onRecordAfterCreateSuccess((e) => {
   // Cria uma NOVA sessão já com o input e aguarda o primeiro turno dela completar.
   // Retorna { sessionId, reply, hardFail, reason }.
   function createSessionAndGetReply(apiKey, combinedBody) {
-   // Até 2 tentativas: erro 5xx na criação de sessão tem 1 retry com pequena
-   // espera. O corpo/estado do erro é SEMPRE logado para diagnóstico.
-   let sessionRes = null
-   for (let attempt = 1; attempt <= 2; attempt++) {
-     try {
-       sessionRes = callOpenAiAgentsApi(`${AGENTS_BASE}/sessions`, apiKey, {
-         agent_id: OPENAI_AGENT_ID,
-         environment: { type: 'none' },
-         input: combinedBody,
-         stream: false,
-       })
-     } catch (err) {
-       $app
-         .logger()
-         .error('AI session creation threw', 'attempt', attempt, 'error', String(err))
-       sessionRes = null
-     }
-     const st = sessionRes ? sessionRes.statusCode : 0
-     if (st === 200 || st === 201) break
-     $app
-       .logger()
-       .error(
-         'AI session creation failed',
-         'attempt',
-         attempt,
-         'status',
-         st,
-         'body',
-         JSON.stringify((sessionRes && sessionRes.json) || {}),
-       )
-     if (attempt < 2 && st >= 500) {
-       try {
-         $http.send({ url: 'https://httpbin.org/delay/2', timeout: 9 })
-       } catch (_) {}
-       continue
-     }
-     break
-   }
+    // Até 2 tentativas: erro 5xx na criação de sessão tem 1 retry com pequena
+    // espera. O corpo/estado do erro é SEMPRE logado para diagnóstico.
+    let sessionRes = null
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        sessionRes = callOpenAiAgentsApi(`${AGENTS_BASE}/sessions`, apiKey, {
+          agent_id: OPENAI_AGENT_ID,
+          environment: { type: 'none' },
+          input: combinedBody,
+          stream: false,
+        })
+      } catch (err) {
+        $app.logger().error('AI session creation threw', 'attempt', attempt, 'error', String(err))
+        sessionRes = null
+      }
+      const st = sessionRes ? sessionRes.statusCode : 0
+      if (st === 200 || st === 201) break
+      $app
+        .logger()
+        .error(
+          'AI session creation failed',
+          'attempt',
+          attempt,
+          'status',
+          st,
+          'body',
+          JSON.stringify((sessionRes && sessionRes.json) || {}),
+        )
+      if (attempt < 2 && st >= 500) {
+        try {
+          $http.send({ url: 'https://httpbin.org/delay/2', timeout: 9 })
+        } catch (_) {}
+        continue
+      }
+      break
+    }
 
-   if (!sessionRes) {
-     return {
-       sessionId: '',
-       reply: '',
-       hardFail: false,
-       reason: 'criação de sessão falhou (sem resposta da API após retry)',
-     }
-   }
+    if (!sessionRes) {
+      return {
+        sessionId: '',
+        reply: '',
+        hardFail: false,
+        reason: 'criação de sessão falhou (sem resposta da API após retry)',
+      }
+    }
 
-   if (sessionRes.statusCode !== 200 && sessionRes.statusCode !== 201) {
-     const bodyPreview = JSON.stringify(sessionRes.json || {}).slice(0, 200)
-     return {
-       sessionId: '',
-       reply: '',
-       hardFail: false,
-       reason:
-         'criação de sessão falhou (status ' +
-         sessionRes.statusCode +
-         ')' +
-         (bodyPreview ? ': ' + bodyPreview : ''),
-     }
-   }
+    if (sessionRes.statusCode !== 200 && sessionRes.statusCode !== 201) {
+      const bodyPreview = JSON.stringify(sessionRes.json || {}).slice(0, 200)
+      return {
+        sessionId: '',
+        reply: '',
+        hardFail: false,
+        reason:
+          'criação de sessão falhou (status ' +
+          sessionRes.statusCode +
+          ')' +
+          (bodyPreview ? ': ' + bodyPreview : ''),
+      }
+    }
 
-   try {
-
+    try {
       const data = sessionRes.json || {}
       const sid = data.id ? String(data.id) : ''
       let reply = extractReplyText(data)
@@ -481,9 +491,11 @@ onRecordAfterCreateSuccess((e) => {
     }
   }
 
-  // ===== Deduplicação (antes de qualquer coisa) =====
+  // ===== Ignora 'in' com body vazio antes de qualquer coisa (nem debounce) =====
+  // A mensagem permanece registrada no inbox — o hook só não a processa.
   const msg = e.record
   if (msg.getString('direction') !== 'in') return e.next()
+  if (!msg.getString('body')) return e.next()
 
   const messageId = msg.getString('message_id') || msg.id
   const contactId = msg.getString('contact_id')
@@ -635,6 +647,7 @@ onRecordAfterCreateSuccess((e) => {
   // Mensagens pendentes do contato (as que chegaram desde a última resposta da IA).
   let newInMessages = []
   let sourceIds = []
+  let sourceLastAtMs = 0
   try {
     const history = $app.findRecordsByFilter(
       'whatsapp_messages',
@@ -649,6 +662,12 @@ onRecordAfterCreateSuccess((e) => {
       if (m.getString('body')) {
         newInMessages.push(m.getString('body'))
         sourceIds.push(m.getString('message_id') || m.id)
+        // Instante da entrada mais recente que esta rodada vai responder
+        // (sent_at com fallback created) — base do descarte de obsoletas.
+        if (sourceLastAtMs === 0) {
+          const sa = m.getString('sent_at')
+          sourceLastAtMs = sa ? parseTs(sa) : parseTs(m.get('created'))
+        }
       }
     }
     newInMessages.reverse()
@@ -670,6 +689,7 @@ onRecordAfterCreateSuccess((e) => {
   try {
     let reply = ''
     let failReason = ''
+    let staleDiscarded = false
 
     if (sessionId) {
       // Continua a sessão existente na OpenAI (memória da conversa fica lá).
@@ -796,46 +816,71 @@ onRecordAfterCreateSuccess((e) => {
     }
 
     if (reply) {
-      // ===== Mensagens obsoletas: se uma entrada ainda mais recente chegou
-      // enquanto a resposta era gerada (e ainda não foi respondida), descarta
-      // esta resposta — a rodada mais recente responde com o contexto completo.
+      // ===== Mensagens obsoletas: se existe entrada com TEXTO mais recente do
+      // que a última que esta rodada está respondendo, descarta esta resposta —
+      // a rodada mais recente (debounce) responde com o contexto completo.
+      // Comparação por INSTANTE (sent_at, com fallback created) contra TODAS as
+      // 'in' do contato com body não-vazio: mensagens vazias não contam nem
+      // bloqueiam (elas ficam com created maior e antes mascaravam a pergunta
+      // nova — caso 20:07:46/20:07:54 do contato 5511995464029).
       try {
-        const newerIn = $app.findRecordsByFilter(
+        const respondedAtMs = sourceLastAtMs
+        const inHistory = $app.findRecordsByFilter(
           'whatsapp_messages',
           `contact_id='${contactId}' && direction='in'`,
           '-created',
-          1,
+          20,
           0,
         )
-        const newest = newerIn.length > 0 ? newerIn[0] : null
-        const newestId = newest ? newest.getString('message_id') || newest.id : ''
-        if (newest && newestId && sourceIds.indexOf(newestId) === -1) {
-          $app
-            .logger()
-            .info(
-              'AI stale reply discarded — newer input arrived',
-              'contact',
-              contactId,
-              'newest',
-              newestId,
-              'sources',
-              sourceIds.join(','),
-            )
-          reply = ''
+        for (let ni = 0; ni < inHistory.length; ni++) {
+          const m = inHistory[ni]
+          if (!m.getString('body')) continue // vazia não conta
+          const mid = m.getString('message_id') || m.id
+          if (sourceIds.indexOf(mid) !== -1) continue // é a própria fonte desta rodada
+          const mAt = m.getString('sent_at')
+            ? parseTs(m.getString('sent_at'))
+            : parseTs(m.get('created'))
+          if (mAt <= 0 || respondedAtMs <= 0) continue
+          if (mAt > respondedAtMs && nowProcessed.indexOf(mid) === -1) {
+            $app
+              .logger()
+              .info(
+                'AI stale reply discarded — newer text input exists',
+                'contact',
+                contactId,
+                'newer',
+                mid,
+                'responding_to_at',
+                new Date(respondedAtMs).toISOString(),
+                'sources',
+                sourceIds.join(','),
+              )
+            reply = ''
+            break
+          }
         }
       } catch (err) {
         $app.logger().warn('AI stale check failed', 'error', String(err))
       }
     }
 
-    // Marca como processadas (idempotente) e limpa as pendentes.
-    const nowProcessed = readJsonArray(latestContact, 'ai_processed_ids')
-    for (let i = 0; i < sourceIds.length; i++) {
-      if (nowProcessed.indexOf(sourceIds[i]) === -1) nowProcessed.push(sourceIds[i])
+    // Quando a resposta foi DESCARTADA como obsoleta, NÃO marca as fontes como
+    // processadas e NÃO limpa as pendentes: a mensagem de texto mais recente
+    // ("Vcs tem casa ?") precisa ser respondida pela rodada mais recente —
+    // sem isso ela ficava órfã (respondida só pelo 'Obrigado' descartado).
+    // Nas falhas reais da IA (hardFail/timeout), marca como processadas para
+    // não reprocessar infinitamente a mesma entrada.
+    if (!reply && !failReason) staleDiscarded = true
+
+    if (!staleDiscarded) {
+      const nowProcessed = readJsonArray(latestContact, 'ai_processed_ids')
+      for (let i = 0; i < sourceIds.length; i++) {
+        if (nowProcessed.indexOf(sourceIds[i]) === -1) nowProcessed.push(sourceIds[i])
+      }
+      writeJsonArray(latestContact, 'ai_processed_ids', nowProcessed)
+      writeJsonArray(latestContact, 'ai_pending_ids', [])
+      $app.saveNoValidate(latestContact)
     }
-    writeJsonArray(latestContact, 'ai_processed_ids', nowProcessed)
-    writeJsonArray(latestContact, 'ai_pending_ids', [])
-    $app.saveNoValidate(latestContact)
 
     if (reply) {
       sendWhatsappText(
@@ -845,6 +890,16 @@ onRecordAfterCreateSuccess((e) => {
         'ai_response',
         latestContact,
       )
+    } else if (staleDiscarded) {
+      // Resposta descartada como obsoleta: NADA é registrado nem enviado — a
+      // rodada mais recente responde tudo (a pendente segue como pendente).
+      $app
+        .logger()
+        .info(
+          'AI reply discarded as stale — pending stays for the newest round',
+          'contact',
+          contactId,
+        )
     } else {
       // Falha da IA NÃO é enviada ao cliente. Só registra e loga.
       saveAiErrorRecord(
