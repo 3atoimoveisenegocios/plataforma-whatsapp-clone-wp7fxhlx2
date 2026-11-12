@@ -418,7 +418,19 @@ onRecordAfterCreateSuccess(async (e) => {
       contact.set('last_message_at', new Date().toISOString())
       $app.saveNoValidate(contact)
     } else {
-      $app.logger().error('Evolution send failed', 'status', res.statusCode)
+      // Loga o texto que a IA produziu junto da falha de envio — sem isso uma
+      // resposta válida para um número de teste fica invisível nos logs.
+      $app
+        .logger()
+        .error(
+          'Evolution send failed',
+          'status',
+          res.statusCode,
+          'body_preview',
+          JSON.stringify(res.json || {}).slice(0, 300),
+          'text',
+          String(text || '').slice(0, 500),
+        )
     }
   }
 
