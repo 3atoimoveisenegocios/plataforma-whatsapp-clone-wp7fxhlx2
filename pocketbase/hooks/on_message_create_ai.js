@@ -24,6 +24,7 @@
  *
  * Nota: toda a lógica fica dentro do callback (o JSVM do PocketBase executa
  * callbacks em um pool separado — declarações de topo não são visíveis lá).
+ * v0.0.84: redeploy da extração por turno atual (sem mudança de lógica).
  */
 /* eslint-disable no-unused-vars */
 onRecordAfterCreateSuccess(async (e) => {
