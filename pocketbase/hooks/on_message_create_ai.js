@@ -42,6 +42,14 @@
  *   nova): o check antigo só olhava a 'in' mais recente, e uma 'in' vazia logo
  *   depois da pergunta nova (created maior) mascarava a pergunta. Agora o
  *   descarte compara timestamps contra todas as 'in' não-vazias.
+ * v0.0.87: três correções de atraso/órfãs ("responde a anterior"):
+ *   (1) ao finalizar, a rodada remove APENAS os próprios sourceIds das pendentes
+ *       (relendo o contato antes) — nunca esvazia a lista; uma mensagem que saiu
+ *       da lista sem ter sido respondida segue e é processada;
+ *   (2) o check de obsoletas declara ai_processed_ids antes do loop e, se falhar,
+ *       descarta por segurança (fail-closed) logando o erro;
+ *   (3) as esperas (debounce, polling, retry) não dependem mais de httpbin.org:
+ *       waitMs() espera pelo relógio local e nunca lança.
  */
 /* eslint-disable no-unused-vars */
 // JSVM (goja) não suporta funções async — o callback é síncrono (nada de await aqui).
@@ -131,6 +139,15 @@ onRecordAfterCreateSuccess((e) => {
       return bm - am
     })
     return copy
+  }
+
+  // Espera síncrona local (sem serviço externo). Nunca lança: no pior caso
+  // a execução segue imediatamente.
+  function waitMs(ms) {
+    try {
+      const end = Date.now() + ms
+      while (Date.now() < end) {}
+    } catch (_) {}
   }
 
   function callOpenAiAgentsApi(url, apiKey, body, timeout, extraHeaders) {
@@ -245,11 +262,7 @@ onRecordAfterCreateSuccess((e) => {
     const delaySec = opts && opts.delaySec ? opts.delaySec : 2
 
     for (let i = 0; i < maxAttempts; i++) {
-      if (i > 0) {
-        try {
-          $http.send({ url: 'https://httpbin.org/delay/' + delaySec, timeout: delaySec + 7 })
-        } catch (_) {}
-      }
+      if (i > 0) waitMs(delaySec * 1000)
 
       const turns = listSessionTurns(sessionId, apiKey)
       if (turns.length === 0) {
@@ -381,9 +394,7 @@ onRecordAfterCreateSuccess((e) => {
           JSON.stringify((sessionRes && sessionRes.json) || {}),
         )
       if (attempt < 2 && st >= 500) {
-        try {
-          $http.send({ url: 'https://httpbin.org/delay/2', timeout: 9 })
-        } catch (_) {}
+        waitMs(2000)
         continue
       }
       break
@@ -526,7 +537,7 @@ onRecordAfterCreateSuccess((e) => {
   $app.saveNoValidate(contact)
 
   // Espera o debounce (5s) para ver se chega outra mensagem do mesmo contato.
-  $http.send({ url: 'https://httpbin.org/delay/5', timeout: 10 })
+  waitMs(DEBOUNCE_MS)
 
   // Relê o contato: se outra mensagem chegou durante o debounce, ela atualizou
   // ai_pending_at — só a execução mais recente segue (as antigas saem).
@@ -560,18 +571,32 @@ onRecordAfterCreateSuccess((e) => {
   // Mensagens obsoletas: se surgiu uma entrada mais recente que as pendentes
   // conhecidas no contato (chegou durante o debounce e atualizou o estado),
   // a execução mais recente cuida dela — esta sai.
+  // Fora da lista de pendentes: se outra rodada já a respondeu, esta sai; se
+  // não foi respondida ainda, segue e processa normalmente.
   const pendingNow = readJsonArray(latestContact, 'ai_pending_ids')
   if (pendingNow.indexOf(messageId) === -1) {
+    const doneNow = readJsonArray(latestContact, 'ai_processed_ids')
+    if (doneNow.indexOf(messageId) !== -1) {
+      $app
+        .logger()
+        .info(
+          'AI debounce: message already answered by another round',
+          'contact',
+          contactId,
+          'message_id',
+          messageId,
+        )
+      return e.next()
+    }
     $app
       .logger()
       .info(
-        'AI debounce: message no longer pending (newer round took over)',
+        'AI debounce: message not pending but not answered — processing anyway',
         'contact',
         contactId,
         'message_id',
         messageId,
       )
-    return e.next()
   }
 
   // ===== Agente e horário comercial =====
@@ -825,6 +850,8 @@ onRecordAfterCreateSuccess((e) => {
       // nova — caso 20:07:46/20:07:54 do contato 5511995464029).
       try {
         const respondedAtMs = sourceLastAtMs
+        // Declarada ANTES do loop (usada na comparação abaixo).
+        const nowProcessed = readJsonArray(latestContact, 'ai_processed_ids')
         const inHistory = $app.findRecordsByFilter(
           'whatsapp_messages',
           `contact_id='${contactId}' && direction='in'`,
@@ -860,7 +887,11 @@ onRecordAfterCreateSuccess((e) => {
           }
         }
       } catch (err) {
-        $app.logger().warn('AI stale check failed', 'error', String(err))
+        // Fail-closed: sem conseguir conferir obsolescência, descarta por segurança.
+        reply = ''
+        $app
+          .logger()
+          .error('AI stale check failed — discarding reply (fail-closed)', 'error', String(err))
       }
     }
 
@@ -873,12 +904,18 @@ onRecordAfterCreateSuccess((e) => {
     if (!reply && !failReason) staleDiscarded = true
 
     if (!staleDiscarded) {
-      const nowProcessed = readJsonArray(latestContact, 'ai_processed_ids')
+      // Releitura do contato: outras rodadas podem ter gravado ids enquanto esta
+      // esperava a OpenAI. Só mexe nos ids DESTA rodada.
+      latestContact = $app.findRecordById('whatsapp_contacts', contact.id)
+      const doneIds = readJsonArray(latestContact, 'ai_processed_ids')
       for (let i = 0; i < sourceIds.length; i++) {
-        if (nowProcessed.indexOf(sourceIds[i]) === -1) nowProcessed.push(sourceIds[i])
+        if (doneIds.indexOf(sourceIds[i]) === -1) doneIds.push(sourceIds[i])
       }
-      writeJsonArray(latestContact, 'ai_processed_ids', nowProcessed)
-      writeJsonArray(latestContact, 'ai_pending_ids', [])
+      writeJsonArray(latestContact, 'ai_processed_ids', doneIds)
+      const stillPending = readJsonArray(latestContact, 'ai_pending_ids').filter(
+        (id) => sourceIds.indexOf(id) === -1,
+      )
+      writeJsonArray(latestContact, 'ai_pending_ids', stillPending)
       $app.saveNoValidate(latestContact)
     }
 
