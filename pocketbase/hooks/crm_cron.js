@@ -26,6 +26,14 @@ cronAdd('crm_status_updates', '*/1 * * * *', () => {
     { date: fifteenMinsAgoStr },
   )
 
+  // Chave: Secret OPENAI_API_KEY ($os.getenv). O campo api_key do agente não é mais usado.
+  const apiKey = $os.getenv('OPENAI_API_KEY') || $secrets.get('OPENAI_API_KEY') || ''
+  if (apiKey) {
+    $app.logger().info('CRM lead classification key source: Secret OPENAI_API_KEY')
+  } else {
+    $app.logger().warn('CRM lead classification: Secret OPENAI_API_KEY not found')
+  }
+
   for (const contact of waiting) {
     try {
       const messages = $app.findRecordsByFilter(
@@ -46,16 +54,6 @@ cronAdd('crm_status_updates', '*/1 * * * *', () => {
 
       if (!historyText.trim()) historyText = 'Sem mensagens.'
 
-      let provider = 'openai'
-      let apiKey = ''
-      try {
-        const agent = $app.findFirstRecordByFilter('ai_agents', 'user_id = {:userId}', {
-          userId: contact.getString('user_id'),
-        })
-        provider = agent.getString('provider')
-        apiKey = agent.getString('api_key')
-      } catch (err) {}
-
       let newStatus = 'resolvido'
 
       if (apiKey) {
@@ -66,43 +64,46 @@ Responda APENAS com a palavra "perdido" se o cliente desistiu, parou de responde
 Histórico:
 ${historyText}`
 
-        let aiUrl =
-          provider === 'openai'
-            ? 'https://api.openai.com/v1/chat/completions'
-            : 'https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=' +
-              apiKey
+        const res = $http.send({
+          url: 'https://api.openai.com/v1/responses',
+          method: 'POST',
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            input: aiPrompt,
+          }),
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + apiKey,
+          },
+          timeout: 60,
+        })
 
-        if (provider === 'openai') {
-          const res = $http.send({
-            url: aiUrl,
-            method: 'POST',
-            body: JSON.stringify({
-              model: 'gpt-4o-mini',
-              messages: [{ role: 'user', content: aiPrompt }],
-              temperature: 0.1,
-            }),
-            headers: {
-              'Content-Type': 'application/json',
-              Authorization: 'Bearer ' + apiKey,
-            },
-          })
-          if (res.statusCode === 200 && res.json && res.json.choices && res.json.choices[0]) {
-            const answer = res.json.choices[0].message.content.toLowerCase()
-            if (answer.includes('lost') || answer.includes('perdido')) newStatus = 'perdido'
+        if (res.statusCode === 200 && res.json) {
+          let answer = ''
+          if (typeof res.json.output_text === 'string') {
+            answer = res.json.output_text
+          } else if (Array.isArray(res.json.output)) {
+            for (const out of res.json.output) {
+              const contents = Array.isArray(out && out.content) ? out.content : []
+              for (const c of contents) {
+                if (c && c.type === 'output_text' && typeof c.text === 'string') answer += c.text
+              }
+            }
           }
+          answer = answer.toLowerCase()
+          if (answer.includes('lost') || answer.includes('perdido')) newStatus = 'perdido'
         } else {
-          const res = $http.send({
-            url: aiUrl,
-            method: 'POST',
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: aiPrompt }] }],
-            }),
-            headers: { 'Content-Type': 'application/json' },
-          })
-          if (res.statusCode === 200 && res.json && res.json.candidates && res.json.candidates[0]) {
-            const answer = res.json.candidates[0].content.parts[0].text.toLowerCase()
-            if (answer.includes('lost') || answer.includes('perdido')) newStatus = 'perdido'
-          }
+          $app
+            .logger()
+            .error(
+              'CRM lead classification API error',
+              'contact',
+              contact.id,
+              'status',
+              res.statusCode,
+              'body',
+              JSON.stringify(res.json || {}),
+            )
         }
       }
 

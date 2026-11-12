@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-09T15:06:22.964Z",
+  "generatedAt": "2026-11-12T16:04:19.277Z",
   "collections": [
     {
       "name": "users",
@@ -183,6 +183,12 @@
         {
           "name": "tags",
           "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ai_session_id",
+          "type": "text",
           "required": false,
           "system": false
         }
