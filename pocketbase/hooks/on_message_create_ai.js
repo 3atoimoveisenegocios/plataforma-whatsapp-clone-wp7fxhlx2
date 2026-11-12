@@ -24,7 +24,11 @@
  *
  * Nota: toda a lógica fica dentro do callback (o JSVM do PocketBase executa
  * callbacks em um pool separado — declarações de topo não são visíveis lá).
- * v0.0.84: redeploy da extração por turno atual (sem mudança de lógica).
+ * v0.0.85: janela de polling maior para turnos longos do agente (reasoning +
+ *   web_search às vezes passam de 30s): continuação 30x3s (~90s) e sessão nova
+ *   30x2s (~60s). Nada mais muda: extração do final_answer do turno atual,
+ *   dedupe por ai_processed_ids, debounce ~5s, descarte de resposta obsoleta,
+ *   Secret OPENAI_API_KEY e NUNCA enviar erro ao cliente.
  */
 /* eslint-disable no-unused-vars */
 // JSVM (goja) não suporta funções async — o callback é síncrono (nada de await aqui).
@@ -221,8 +225,11 @@ onRecordAfterCreateSuccess((e) => {
     const priorTurnId = opts && opts.priorTurnId ? opts.priorTurnId : ''
     const pinnedTurnId = opts && opts.pinnedTurnId ? opts.pinnedTurnId : ''
     const t0Ms = opts && opts.t0Ms ? opts.t0Ms : 0
-    const maxAttempts = opts && opts.maxAttempts ? opts.maxAttempts : 10
-    const delaySec = opts && opts.delaySec ? opts.delaySec : 3
+    // Janela padrão maior: turnos do agente (reasoning + web_search) às vezes
+    // passam de 30s — ~60–90s de espera total no máximo, com delay menor para
+    // caber no tempo de execução do hook no JSVM.
+    const maxAttempts = opts && opts.maxAttempts ? opts.maxAttempts : 30
+    const delaySec = opts && opts.delaySec ? opts.delaySec : 2
 
     for (let i = 0; i < maxAttempts; i++) {
       if (i > 0) {
@@ -367,7 +374,7 @@ onRecordAfterCreateSuccess((e) => {
 
       // Sessão nova: o único turno existente é o criado por este input.
       const t0Ms = Date.now()
-      const pr = pollForTurnReply(sid, apiKey, { priorTurnId: '', t0Ms: t0Ms, maxAttempts: 15 })
+      const pr = pollForTurnReply(sid, apiKey, { priorTurnId: '', t0Ms: t0Ms, maxAttempts: 30 })
       if (pr.text) return { sessionId: sid, reply: pr.text, hardFail: false, reason: '' }
       return { sessionId: sid, reply: '', hardFail: pr.hardFail, reason: pr.reason }
     } catch (err) {
@@ -695,7 +702,7 @@ onRecordAfterCreateSuccess((e) => {
           priorTurnId: priorTurnId,
           pinnedTurnId: pinnedTurnId,
           t0Ms: t0Ms,
-          maxAttempts: 10,
+          maxAttempts: 30,
           delaySec: 3,
         })
         if (pr.text) {
