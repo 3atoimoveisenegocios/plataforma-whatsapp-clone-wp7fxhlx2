@@ -27,7 +27,8 @@
  * v0.0.84: redeploy da extração por turno atual (sem mudança de lógica).
  */
 /* eslint-disable no-unused-vars */
-onRecordAfterCreateSuccess(async (e) => {
+// JSVM (goja) não suporta funções async — o callback é síncrono (nada de await aqui).
+onRecordAfterCreateSuccess((e) => {
   const OPENAI_AGENT_ID = 'agent_6af5dc6ca48c8191b0c1a59374012598'
   const OPENAI_BETA_HEADER = 'agents=v1'
   const AGENTS_BASE = 'https://api.openai.com/v1/agents'
