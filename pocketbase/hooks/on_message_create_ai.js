@@ -1,11 +1,13 @@
 /**
  * IA da Iris via OpenAI Agents API (agente salvo agent_6af5dc6ca48c8191b0c1a59374012598).
  *
- * - A chave usada é SEMPRE o Secret OPENAI_API_KEY ($os.getenv). O campo api_key do
- *   agente NÃO é mais lido (permanece intacto no banco, mas sem uso).
+ * - A chave usada é SEMPRE o Secret OPENAI_API_KEY ($secrets.get com fallback $os.getenv).
+ *   O campo api_key do agente NÃO é lido (permanece intacto no banco, mas sem uso).
  * - A memória da conversa fica na OpenAI: a primeira mensagem cria uma sessão
  *   (POST /v1/agents/sessions) e o session_id é salvo no contato (whatsapp_contacts.ai_session_id).
  *   Mensagens seguintes continuam a sessão (POST /v1/agents/sessions/{id}/events).
+ * - Com stream:false a criação retorna a SESSÃO (turn assíncrono, sem texto) — o hook faz
+ *   polling de GET /v1/agents/sessions/{id}/items até a resposta do agente aparecer.
  * - Em caso de falha da IA, NADA é enviado ao cliente: registra em whatsapp_messages
  *   com automation_type='ai_error' e loga o erro.
  *
@@ -16,9 +18,10 @@
 onRecordAfterCreateSuccess(async (e) => {
   const OPENAI_AGENT_ID = 'agent_6af5dc6ca48c8191b0c1a59374012598'
   const OPENAI_BETA_HEADER = 'agents=v1'
+  const AGENTS_BASE = 'https://api.openai.com/v1/agents'
 
   function getOpenAiKey() {
-    const key = $os.getenv('OPENAI_API_KEY') || $secrets.get('OPENAI_API_KEY') || ''
+    const key = $secrets.get('OPENAI_API_KEY') || $os.getenv('OPENAI_API_KEY') || ''
     if (key) {
       $app
         .logger()
@@ -55,17 +58,27 @@ onRecordAfterCreateSuccess(async (e) => {
     }
   }
 
-  // Extrai o texto da resposta do agente. Ordem: output_text raiz, depois
-  // output[].content[] (itens type='output_text', concatenando .text), depois
-  // fallbacks de streaming (event text/delta).
+  // Extrai o texto de resposta do agente a partir do shape de items/output da
+  // Agents API: itens type='message' do root agent com content[] type='output_text'.
   function extractReplyText(data) {
     if (!data) return ''
+
+    // Alguns endpoints devolvem output_text direto.
     if (typeof data.output_text === 'string' && data.output_text.trim()) return data.output_text
 
-    const outputs = Array.isArray(data.output) ? data.output : []
-    for (const out of outputs) {
-      if (!out || out.type === 'reasoning' || out.type === 'web_search_call') continue
-      const contents = Array.isArray(out.content) ? out.content : []
+    const candidates = Array.isArray(data.data)
+      ? data.data
+      : Array.isArray(data.output)
+        ? data.output
+        : Array.isArray(data)
+          ? data
+          : []
+
+    // 1) Itens completos (formato items: { type:'message', role, content:[...] }).
+    for (const item of candidates) {
+      if (!item || item.type !== 'message') continue
+      if (item.role && item.role !== 'assistant') continue
+      const contents = Array.isArray(item.content) ? item.content : []
       for (const c of contents) {
         if (
           c &&
@@ -78,17 +91,50 @@ onRecordAfterCreateSuccess(async (e) => {
       }
     }
 
+    // 2) Fallback: qualquer content type='output_text' válido.
+    for (const item of candidates) {
+      if (!item) continue
+      const contents = Array.isArray(item.content) ? item.content : []
+      for (const c of contents) {
+        if (c && c.type === 'output_text' && typeof c.text === 'string' && c.text.trim()) {
+          return c.text
+        }
+      }
+    }
+
+    // 3) Fallback: output[] com content direto (formato /v1/responses).
+    const outputs = Array.isArray(data.output) ? data.output : []
+    for (const out of outputs) {
+      if (!out || out.type === 'reasoning' || out.type === 'web_search_call') continue
+      const contents = Array.isArray(out.content) ? out.content : []
+      for (const c of contents) {
+        if (c && c.type === 'output_text' && typeof c.text === 'string' && c.text.trim()) {
+          return c.text
+        }
+      }
+    }
+
     if (typeof data.text === 'string' && data.text.trim()) return data.text
-    if (typeof data.delta === 'string' && data.delta.trim()) return data.delta
     return ''
   }
 
-  // Consome o fluxo SSE (stream:true) até o resultado final e extrai o texto.
+  // Fallback SSE (só usado se o polling falhar): decodifica res.body (bytes) e
+  // extrai o texto dos eventos agent.session.turn.output_text.done / deltas.
   function extractReplyFromSse(res) {
     let text = ''
     let sessionId = ''
     try {
-      const raw = typeof res.raw === 'string' ? res.raw : ''
+      let raw = ''
+      if (typeof res.raw === 'string' && res.raw) raw = res.raw
+      else if (res.body) {
+        try {
+          raw = new TextDecoder().decode(res.body)
+        } catch (_) {
+          raw = String(res.body)
+        }
+      }
+      if (!raw) return { text, sessionId }
+
       const lines = raw.split('\n')
       for (const line of lines) {
         if (!line.startsWith('data:')) continue
@@ -113,23 +159,100 @@ onRecordAfterCreateSuccess(async (e) => {
     return { text, sessionId }
   }
 
-  function callOpenAiAgentsApi(url, apiKey, body, timeout) {
-    return $http.send({
-      url,
-      method: 'POST',
-      headers: {
-        Authorization: 'Bearer ' + apiKey,
-        'Content-Type': 'application/json',
-        'OpenAI-Beta': OPENAI_BETA_HEADER,
-      },
-      body: JSON.stringify(body),
-      timeout: timeout || 60,
-    })
+  function callOpenAiAgentsApi(url, apiKey, body, timeout, extraHeaders) {
+    const headers = {
+      Authorization: 'Bearer ' + apiKey,
+      'Content-Type': 'application/json',
+      'OpenAI-Beta': OPENAI_BETA_HEADER,
+    }
+    if (extraHeaders) {
+      for (const k in extraHeaders) headers[k] = extraHeaders[k]
+    }
+    const options = { url, method: body === null ? 'GET' : 'POST', headers, timeout: timeout || 60 }
+    if (body !== null) options.body = JSON.stringify(body)
+    return $http.send(options)
+  }
+
+  // Consulta os últimos items da sessão (mais recentes primeiro) e extrai a
+  // resposta do agente, se já houver.
+  function getSessionReply(sessionId, apiKey) {
+    let res = null
+    try {
+      res = callOpenAiAgentsApi(
+        `${AGENTS_BASE}/sessions/${sessionId}/items?order=desc&limit=20`,
+        apiKey,
+        null,
+        30,
+      )
+    } catch (err) {
+      $app.logger().warn('AI session items fetch threw', 'error', String(err))
+      return null
+    }
+    if (res.statusCode !== 200) {
+      $app
+        .logger()
+        .warn(
+          'AI session items fetch failed',
+          'status',
+          res.statusCode,
+          'body',
+          JSON.stringify(res.json || {}),
+        )
+      return null
+    }
+    const text = extractReplyText(res.json)
+    return text ? { text } : null
+  }
+
+  // Consulta o estado do turn corrente (status, erro) — para diagnóstico e para
+  // abortar cedo quando o turn falhou.
+  function getSessionTurns(sessionId, apiKey) {
+    try {
+      const res = callOpenAiAgentsApi(
+        `${AGENTS_BASE}/sessions/${sessionId}/turns`,
+        apiKey,
+        null,
+        30,
+      )
+      if (res.statusCode === 200) return res.json
+    } catch (err) {
+      $app.logger().warn('AI session turns fetch threw', 'error', String(err))
+    }
+    return null
+  }
+
+  // Espera o turn da sessão terminar (items com resposta do agente), com polling.
+  function pollForReply(sessionId, apiKey, maxAttempts, delayMs) {
+    for (let i = 0; i < maxAttempts; i++) {
+      const found = getSessionReply(sessionId, apiKey)
+      if (found && found.text) return found.text
+
+      const turns = getSessionTurns(sessionId, apiKey)
+      if (turns && Array.isArray(turns.data)) {
+        for (const t of turns.data) {
+          if (t && (t.status === 'failed' || t.type === 'turn.failed')) {
+            $app
+              .logger()
+              .error(
+                'AI session turn failed',
+                'session',
+                sessionId,
+                'error',
+                JSON.stringify(t.error || {}),
+              )
+            return ''
+          }
+        }
+      }
+      $app.logger().info('AI session polling', 'attempt', i + 1, 'session', sessionId)
+      $http.send({ url: 'https://httpbin.org/delay/3', timeout: 10 })
+    }
+    return ''
   }
 
   function sendWhatsappText(instanceName, remoteJid, text, automationType, contact) {
-    const evoUrl = $secrets.get('EVOLUTION_API_URL')
-    const evoKey = $secrets.get('EVOLUTION_API_KEY')
+    const evoUrl = $secrets.get('EVOLUTION_API_URL') || $os.getenv('EVOLUTION_API_URL') || ''
+    const evoKey = $secrets.get('EVOLUTION_API_KEY') || $os.getenv('EVOLUTION_API_KEY') || ''
     if (!evoUrl || !evoKey) {
       $app.logger().error('Evolution config missing')
       return
@@ -310,80 +433,64 @@ onRecordAfterCreateSuccess(async (e) => {
 
   try {
     let reply = ''
-    let sseText = ''
 
     if (sessionId) {
       // Continua a sessão existente na OpenAI (memória da conversa fica lá).
       $app
         .logger()
         .info('AI session: continuing existing', 'session_id', sessionId, 'contact', contact.id)
-      const eventsUrl = `https://api.openai.com/v1/agents/sessions/${sessionId}/events`
-      let eventsRes = null
-      let continuationOk = false
 
-      // Shape 1: envelope com array de events (input como string simples).
-      try {
-        eventsRes = callOpenAiAgentsApi(
-          eventsUrl,
-          apiKey,
+      const eventsUrl = `${AGENTS_BASE}/sessions/${sessionId}/events`
+      const eventPayload = {
+        events: [
           {
-            events: [{ type: 'agent.session.input.message', input: combinedBody }],
+            type: 'agent.session.input.message',
+            input: [
+              {
+                role: 'user',
+                content: [{ type: 'input_text', text: combinedBody }],
+              },
+            ],
           },
-          90,
-        )
-        if (eventsRes.statusCode === 200 || eventsRes.statusCode === 202) continuationOk = true
-        else
+        ],
+      }
+
+      let continuationOk = false
+      try {
+        const eventsRes = callOpenAiAgentsApi(eventsUrl, apiKey, eventPayload, 90, {
+          'Idempotency-Key': 'msg-' + msg.id + '-' + Date.now(),
+        })
+        if (
+          eventsRes.statusCode === 200 ||
+          eventsRes.statusCode === 201 ||
+          eventsRes.statusCode === 202
+        ) {
+          continuationOk = true
+        } else {
           $app
             .logger()
             .warn(
-              'AI session events shape 1 failed',
+              'AI session events failed',
               'status',
               eventsRes.statusCode,
               'body',
               JSON.stringify(eventsRes.json || {}),
             )
+        }
       } catch (err) {
-        $app.logger().warn('AI session events shape 1 threw', 'error', String(err))
+        $app.logger().warn('AI session events threw', 'error', String(err))
       }
 
-      // Shape 2: evento direto no body (sem envelope).
-      if (!continuationOk) {
-        try {
-          eventsRes = callOpenAiAgentsApi(
-            eventsUrl,
-            apiKey,
-            {
-              type: 'agent.session.input.message',
-              input: combinedBody,
-            },
-            90,
-          )
-          if (eventsRes.statusCode === 200 || eventsRes.statusCode === 202) continuationOk = true
-          else
-            $app
-              .logger()
-              .warn(
-                'AI session events shape 2 failed',
-                'status',
-                eventsRes.statusCode,
-                'body',
-                JSON.stringify(eventsRes.json || {}),
-              )
-        } catch (err) {
-          $app.logger().warn('AI session events shape 2 threw', 'error', String(err))
+      if (continuationOk) {
+        reply = pollForReply(sessionId, apiKey, 10, 3000)
+        if (reply) {
+          $app
+            .logger()
+            .info('AI session continued OK', 'session_id', sessionId, 'contact', contact.id)
         }
       }
 
-      if (continuationOk && eventsRes) {
-        reply = extractReplyText(eventsRes.json)
-        if (!reply) {
-          const sse = extractReplyFromSse(eventsRes)
-          sseText = sse.text
-          if (sse.sessionId) sessionId = sse.sessionId
-        }
-      }
-
-      if (!reply && !sseText) {
+      if (!reply) {
         // Continuação falhou, expirou ou não trouxe texto — nova sessão (automático).
         $app
           .logger()
@@ -393,48 +500,44 @@ onRecordAfterCreateSuccess(async (e) => {
             sessionId,
           )
         sessionId = ''
-      } else {
-        $app
-          .logger()
-          .info('AI session continued OK', 'session_id', sessionId, 'contact', contact.id)
       }
     }
 
-    if (!reply && !sseText) {
+    if (!reply) {
       // Cria uma nova sessão no agente salvo (primeira mensagem ou sessão expirada).
       $app
         .logger()
         .info('AI session: creating new', 'agent', OPENAI_AGENT_ID, 'contact', contact.id)
-      const sessionRes = callOpenAiAgentsApi('https://api.openai.com/v1/agents/sessions', apiKey, {
-        agent_id: OPENAI_AGENT_ID,
-        environment: { type: 'none' },
-        input: combinedBody,
-        stream: false,
-      })
+      try {
+        const sessionRes = callOpenAiAgentsApi(`${AGENTS_BASE}/sessions`, apiKey, {
+          agent_id: OPENAI_AGENT_ID,
+          environment: { type: 'none' },
+          input: combinedBody,
+          stream: false,
+        })
 
-      if (sessionRes.statusCode === 200 || sessionRes.statusCode === 201) {
-        const data = sessionRes.json
-        if (data && data.id) sessionId = data.id
-        reply = extractReplyText(data)
-        if (!reply) {
-          const sse = extractReplyFromSse(sessionRes)
-          sseText = sse.text
-          if (sse.sessionId) sessionId = sse.sessionId
+        if (sessionRes.statusCode === 200 || sessionRes.statusCode === 201) {
+          const data = sessionRes.json || {}
+          if (data.id) sessionId = data.id
+          reply = extractReplyText(data)
+          if (!reply && sessionId) {
+            reply = pollForReply(sessionId, apiKey, 15, 3000)
+          }
+        } else {
+          $app
+            .logger()
+            .error(
+              'AI session creation failed',
+              'status',
+              sessionRes.statusCode,
+              'body',
+              JSON.stringify(sessionRes.json || {}),
+            )
         }
-      } else {
-        $app
-          .logger()
-          .error(
-            'AI session creation failed',
-            'status',
-            sessionRes.statusCode,
-            'body',
-            JSON.stringify(sessionRes.json || {}),
-          )
+      } catch (err) {
+        $app.logger().error('AI session creation threw', 'error', String(err))
       }
     }
-
-    if (!reply) reply = sseText
 
     if (reply && sessionId) {
       contact.set('ai_session_id', sessionId)
@@ -445,7 +548,7 @@ onRecordAfterCreateSuccess(async (e) => {
     if (reply) {
       sendWhatsappText(instanceName, contact.getString('remote_jid'), reply, 'ai_response', contact)
     } else {
-      // CORREÇÃO: erro da IA NÃO é mais enviado ao cliente. Só registra e loga.
+      // Falha da IA NÃO é enviada ao cliente. Só registra e loga.
       saveAiErrorRecord(contact, instance, 'resposta vazia ou falha na chamada à OpenAI Agents API')
     }
   } catch (err) {
