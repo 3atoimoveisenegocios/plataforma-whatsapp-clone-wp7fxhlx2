@@ -8,6 +8,9 @@
  *   Mensagens seguintes continuam a sessão (POST /v1/agents/sessions/{id}/events).
  * - Com stream:false a criação retorna a SESSÃO (turn assíncrono, sem texto) — o hook faz
  *   polling de GET /v1/agents/sessions/{id}/items até a resposta do agente aparecer.
+ *   Shape confirmado com dados reais (v0.0.78): a resposta NÃO está no output_text
+ *   do root nem em itens type='message' — está no item com phase='final_answer',
+ *   cujo content[] tem blocos type='output_text' com o texto em .text.
  * - Em caso de falha da IA, NADA é enviado ao cliente: registra em whatsapp_messages
  *   com automation_type='ai_error' e loga o erro.
  *
@@ -19,7 +22,7 @@
  * Nota: toda a lógica fica dentro do callback (o JSVM do PocketBase executa
  * callbacks em um pool separado — declarações de topo não são visíveis lá).
  */
-
+/* eslint-disable no-unused-vars */
 onRecordAfterCreateSuccess(async (e) => {
   const OPENAI_AGENT_ID = 'agent_6af5dc6ca48c8191b0c1a59374012598'
   const OPENAI_BETA_HEADER = 'agents=v1'
@@ -90,6 +93,10 @@ onRecordAfterCreateSuccess(async (e) => {
     // Alguns endpoints devolvem output_text direto.
     if (typeof data.output_text === 'string' && data.output_text.trim()) return data.output_text
 
+    // Shape REAL confirmado no diagnóstico (v0.0.78): a resposta do agente Iris
+    // aparece na lista de itens da sessão como um item com phase='final_answer',
+    // cujo content[] traz blocos type='output_text' com o texto em .text.
+    // NÃO está no root output_text, NEM em itens type='message'.
     const candidates = Array.isArray(data.data)
       ? data.data
       : Array.isArray(data.output)
@@ -98,47 +105,33 @@ onRecordAfterCreateSuccess(async (e) => {
           ? data
           : []
 
-    // 1) Itens completos (formato items: { type:'message', role, content:[...] }).
+    let best = ''
+    for (const item of candidates) {
+      if (!item || item.phase !== 'final_answer') continue
+      const contents = Array.isArray(item.content) ? item.content : []
+      let itemText = ''
+      for (const c of contents) {
+        if (c && c.type === 'output_text' && typeof c.text === 'string') itemText += c.text
+      }
+      if (itemText.trim()) best = itemText // itera até o último final_answer (mais recente)
+    }
+    if (best) return best
+
+    // Fallbacks conservadores (caso o shape mude): root text ou resposta direta.
+    if (typeof data.text === 'string' && data.text.trim()) return data.text
+
+    // Itens type='message' com output_text (shape documentado da Responses API).
     for (const item of candidates) {
       if (!item || item.type !== 'message') continue
       if (item.role && item.role !== 'assistant') continue
       const contents = Array.isArray(item.content) ? item.content : []
       for (const c of contents) {
-        if (
-          c &&
-          (c.type === 'output_text' || c.type === 'text') &&
-          typeof c.text === 'string' &&
-          c.text.trim()
-        ) {
-          return c.text
-        }
-      }
-    }
-
-    // 2) Fallback: qualquer content type='output_text' válido.
-    for (const item of candidates) {
-      if (!item) continue
-      const contents = Array.isArray(item.content) ? item.content : []
-      for (const c of contents) {
         if (c && c.type === 'output_text' && typeof c.text === 'string' && c.text.trim()) {
           return c.text
         }
       }
     }
 
-    // 3) Fallback: output[] com content direto (formato /v1/responses).
-    const outputs = Array.isArray(data.output) ? data.output : []
-    for (const out of outputs) {
-      if (!out || out.type === 'reasoning' || out.type === 'web_search_call') continue
-      const contents = Array.isArray(out.content) ? out.content : []
-      for (const c of contents) {
-        if (c && c.type === 'output_text' && typeof c.text === 'string' && c.text.trim()) {
-          return c.text
-        }
-      }
-    }
-
-    if (typeof data.text === 'string' && data.text.trim()) return data.text
     return ''
   }
 
