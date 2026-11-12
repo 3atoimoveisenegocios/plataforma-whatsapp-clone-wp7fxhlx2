@@ -339,31 +339,69 @@ onRecordAfterCreateSuccess((e) => {
   // Cria uma NOVA sessão já com o input e aguarda o primeiro turno dela completar.
   // Retorna { sessionId, reply, hardFail, reason }.
   function createSessionAndGetReply(apiKey, combinedBody) {
-    try {
-      const sessionRes = callOpenAiAgentsApi(`${AGENTS_BASE}/sessions`, apiKey, {
-        agent_id: OPENAI_AGENT_ID,
-        environment: { type: 'none' },
-        input: combinedBody,
-        stream: false,
-      })
+   // Até 2 tentativas: erro 5xx na criação de sessão tem 1 retry com pequena
+   // espera. O corpo/estado do erro é SEMPRE logado para diagnóstico.
+   let sessionRes = null
+   for (let attempt = 1; attempt <= 2; attempt++) {
+     try {
+       sessionRes = callOpenAiAgentsApi(`${AGENTS_BASE}/sessions`, apiKey, {
+         agent_id: OPENAI_AGENT_ID,
+         environment: { type: 'none' },
+         input: combinedBody,
+         stream: false,
+       })
+     } catch (err) {
+       $app
+         .logger()
+         .error('AI session creation threw', 'attempt', attempt, 'error', String(err))
+       sessionRes = null
+     }
+     const st = sessionRes ? sessionRes.statusCode : 0
+     if (st === 200 || st === 201) break
+     $app
+       .logger()
+       .error(
+         'AI session creation failed',
+         'attempt',
+         attempt,
+         'status',
+         st,
+         'body',
+         JSON.stringify((sessionRes && sessionRes.json) || {}),
+       )
+     if (attempt < 2 && st >= 500) {
+       try {
+         $http.send({ url: 'https://httpbin.org/delay/2', timeout: 9 })
+       } catch (_) {}
+       continue
+     }
+     break
+   }
 
-      if (sessionRes.statusCode !== 200 && sessionRes.statusCode !== 201) {
-        $app
-          .logger()
-          .error(
-            'AI session creation failed',
-            'status',
-            sessionRes.statusCode,
-            'body',
-            JSON.stringify(sessionRes.json || {}),
-          )
-        return {
-          sessionId: '',
-          reply: '',
-          hardFail: false,
-          reason: 'criação de sessão falhou (status ' + sessionRes.statusCode + ')',
-        }
-      }
+   if (!sessionRes) {
+     return {
+       sessionId: '',
+       reply: '',
+       hardFail: false,
+       reason: 'criação de sessão falhou (sem resposta da API após retry)',
+     }
+   }
+
+   if (sessionRes.statusCode !== 200 && sessionRes.statusCode !== 201) {
+     const bodyPreview = JSON.stringify(sessionRes.json || {}).slice(0, 200)
+     return {
+       sessionId: '',
+       reply: '',
+       hardFail: false,
+       reason:
+         'criação de sessão falhou (status ' +
+         sessionRes.statusCode +
+         ')' +
+         (bodyPreview ? ': ' + bodyPreview : ''),
+     }
+   }
+
+   try {
 
       const data = sessionRes.json || {}
       const sid = data.id ? String(data.id) : ''
