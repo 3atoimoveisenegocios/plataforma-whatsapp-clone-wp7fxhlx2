@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-12T21:10:28.517Z",
+  "generatedAt": "2026-11-12T21:42:27.351Z",
   "collections": [
     {
       "name": "users",
@@ -335,9 +335,49 @@
           "type": "text",
           "required": false,
           "system": false
+        },
+        {
+          "name": "ai_status",
+          "type": "select",
+          "required": false,
+          "system": false,
+          "selectValues": ["enviada", "falhou", "descartada"]
+        },
+        {
+          "name": "ai_reason",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ai_session_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ai_turn_id",
+          "type": "text",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ai_source_ids",
+          "type": "json",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ai_trigger_body",
+          "type": "text",
+          "required": false,
+          "system": false
         }
       ],
-      "indexes": ["CREATE UNIQUE INDEX idx_wm_id ON whatsapp_messages (message_id)"]
+      "indexes": [
+        "CREATE UNIQUE INDEX idx_wm_id ON whatsapp_messages (message_id)",
+        "CREATE INDEX `idx_wm_ai_session` ON `whatsapp_messages` (ai_session_id)"
+      ]
     },
     {
       "name": "ai_agents",

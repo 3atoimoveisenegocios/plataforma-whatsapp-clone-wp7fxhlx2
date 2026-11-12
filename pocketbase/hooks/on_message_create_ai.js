@@ -38,6 +38,13 @@
  *   mais recente do que o que a rodada responde, NÃO envia — e NÃO marca as
  *   fontes como processadas nem limpa as pendentes, para que a rodada mais
  *   recente (que inclui o texto novo no input) responda tudo.
+ * v0.0.88: APENAS observabilidade — cada rodada grava o desfecho nos campos
+ *   novos de whatsapp_messages (migração 0037): ai_status (enviada/falhou/
+ *   descartada), ai_reason, ai_session_id, ai_turn_id, ai_source_ids (ids das
+ *   entradas que dispararam a rodada) e ai_trigger_body (texto recebido que
+ *   disparou). Nenhuma linha da lógica muda: dedupe, debounce, descarte de
+ *   obsoletas, extração do turno atual, polling e NUNCA enviar erro ao cliente
+ *   continuam idênticos.
  * v0.0.86: correção do out-of-order ("Obrigado" respondido DEPOIS de pergunta
  *   nova): o check antigo só olhava a 'in' mais recente, e uma 'in' vazia logo
  *   depois da pergunta nova (created maior) mascarava a pergunta. Agora o
@@ -80,7 +87,7 @@ onRecordAfterCreateSuccess((e) => {
     return key
   }
 
-  function saveAiErrorRecord(contact, instance, detail) {
+  function saveAiErrorRecord(contact, instance, detail, meta) {
     try {
       const msgsCol = $app.findCollectionByNameOrId('whatsapp_messages')
       const msgRecord = new Record(msgsCol)
@@ -94,9 +101,52 @@ onRecordAfterCreateSuccess((e) => {
       msgRecord.set('type', 'text')
       msgRecord.set('automation_type', 'ai_error')
       msgRecord.set('sent_at', new Date().toISOString())
+      if (meta) {
+        if (meta.status) msgRecord.set('ai_status', meta.status)
+        if (meta.reason) msgRecord.set('ai_reason', meta.reason)
+        if (meta.sessionId) msgRecord.set('ai_session_id', meta.sessionId)
+        if (meta.turnId) msgRecord.set('ai_turn_id', meta.turnId)
+        if (meta.sourceIds) msgRecord.set('ai_source_ids', JSON.stringify(meta.sourceIds))
+        if (meta.triggerBody) msgRecord.set('ai_trigger_body', meta.triggerBody)
+      }
       $app.saveNoValidate(msgRecord)
     } catch (err) {
       $app.logger().error('Failed to record ai_error', 'error', String(err))
+    }
+  }
+
+  // v0.0.88 — APENAS observabilidade: grava o desfecho da rodada num registro
+  // whatsapp_messages (direction='out', automation_type='ai_log'). NUNCA é
+  // enviado ao cliente (sendWhatsappText não é chamado) e nada da lógica muda.
+  function saveAiLogRecord(contact, instance, meta) {
+    try {
+      const msgsCol = $app.findCollectionByNameOrId('whatsapp_messages')
+      const logRecord = new Record(msgsCol)
+      logRecord.set('user_id', contact.getString('user_id'))
+      logRecord.set('instance_id', instance.id)
+      logRecord.set('contact_id', contact.id)
+      logRecord.set('remote_jid', contact.getString('remote_jid'))
+      logRecord.set('message_id', 'log_' + $security.randomString(10))
+      logRecord.set('direction', 'out')
+      const bodyPrefix =
+        meta && meta.status === 'descartada'
+          ? 'Rodada descartada: resposta obsoleta (há entrada mais recente sem resposta).'
+          : 'Rodada sem resposta: ' + ((meta && meta.reason) || 'motivo não informado')
+      logRecord.set('body', bodyPrefix)
+      logRecord.set('type', 'text')
+      logRecord.set('automation_type', 'ai_log')
+      logRecord.set('sent_at', new Date().toISOString())
+      if (meta) {
+        if (meta.status) logRecord.set('ai_status', meta.status)
+        if (meta.reason) logRecord.set('ai_reason', meta.reason)
+        if (meta.sessionId) logRecord.set('ai_session_id', meta.sessionId)
+        if (meta.turnId) logRecord.set('ai_turn_id', meta.turnId)
+        if (meta.sourceIds) logRecord.set('ai_source_ids', JSON.stringify(meta.sourceIds))
+        if (meta.triggerBody) logRecord.set('ai_trigger_body', meta.triggerBody)
+      }
+      $app.saveNoValidate(logRecord)
+    } catch (err) {
+      $app.logger().error('Failed to record ai_log', 'error', String(err))
     }
   }
 
@@ -323,7 +373,7 @@ onRecordAfterCreateSuccess((e) => {
             'error',
             JSON.stringify(target.error || {}),
           )
-        return { text: '', hardFail: true, reason: 'turno atual ' + st }
+        return { text: '', hardFail: true, reason: 'turno atual ' + st, turnId: target.id }
       }
       if (st === 'completed') {
         const items = getTurnItems(sessionId, target.id, apiKey)
@@ -342,7 +392,12 @@ onRecordAfterCreateSuccess((e) => {
             'items',
             items.length,
           )
-        return { text: '', hardFail: true, reason: 'turno atual completou sem final_answer' }
+        return {
+          text: '',
+          hardFail: true,
+          reason: 'turno atual completou sem final_answer',
+          turnId: target.id,
+        }
       }
       // Turno atual ainda rodando (queued/in_progress/waiting): continua esperando.
       $app
@@ -359,7 +414,12 @@ onRecordAfterCreateSuccess((e) => {
     }
 
     $app.logger().error('AI turn polling timeout without final_answer', 'session', sessionId)
-    return { text: '', hardFail: false, reason: 'timeout aguardando o turno atual completar' }
+    return {
+      text: '',
+      hardFail: false,
+      reason: 'timeout aguardando o turno atual completar',
+      turnId: '',
+    }
   }
 
   // Cria uma NOVA sessão já com o input e aguarda o primeiro turno dela completar.
@@ -428,14 +488,23 @@ onRecordAfterCreateSuccess((e) => {
       const sid = data.id ? String(data.id) : ''
       let reply = extractReplyText(data)
       if (reply || !sid) {
+        // Sessão nova: resposta já disponível no corpo da criação — desfecho
+        // registrado pelo chamador (sessionId = sid; sem id de turno aqui).
         return { sessionId: sid, reply: reply, hardFail: false, reason: '' }
       }
 
       // Sessão nova: o único turno existente é o criado por este input.
       const t0Ms = Date.now()
       const pr = pollForTurnReply(sid, apiKey, { priorTurnId: '', t0Ms: t0Ms, maxAttempts: 30 })
-      if (pr.text) return { sessionId: sid, reply: pr.text, hardFail: false, reason: '' }
-      return { sessionId: sid, reply: '', hardFail: pr.hardFail, reason: pr.reason }
+      if (pr.text)
+        return { sessionId: sid, reply: pr.text, hardFail: false, reason: '', turnId: pr.turnId }
+      return {
+        sessionId: sid,
+        reply: '',
+        hardFail: pr.hardFail,
+        reason: pr.reason,
+        turnId: pr.turnId,
+      }
     } catch (err) {
       $app.logger().error('AI session creation threw', 'error', String(err))
       return {
@@ -447,7 +516,7 @@ onRecordAfterCreateSuccess((e) => {
     }
   }
 
-  function sendWhatsappText(instanceName, remoteJid, text, automationType, contact) {
+  function sendWhatsappText(instanceName, remoteJid, text, automationType, contact, meta) {
     const evoUrl = $secrets.get('EVOLUTION_API_URL') || $os.getenv('EVOLUTION_API_URL') || ''
     const evoKey = $secrets.get('EVOLUTION_API_KEY') || $os.getenv('EVOLUTION_API_KEY') || ''
     if (!evoUrl || !evoKey) {
@@ -480,6 +549,14 @@ onRecordAfterCreateSuccess((e) => {
       msgRecord.set('type', 'text')
       msgRecord.set('automation_type', automationType)
       msgRecord.set('sent_at', new Date().toISOString())
+      if (meta) {
+        if (meta.status) msgRecord.set('ai_status', meta.status)
+        if (meta.reason) msgRecord.set('ai_reason', meta.reason)
+        if (meta.sessionId) msgRecord.set('ai_session_id', meta.sessionId)
+        if (meta.turnId) msgRecord.set('ai_turn_id', meta.turnId)
+        if (meta.sourceIds) msgRecord.set('ai_source_ids', JSON.stringify(meta.sourceIds))
+        if (meta.triggerBody) msgRecord.set('ai_trigger_body', meta.triggerBody)
+      }
       $app.saveNoValidate(msgRecord)
 
       contact.set('last_message', text)
@@ -704,7 +781,14 @@ onRecordAfterCreateSuccess((e) => {
 
   const apiKey = getOpenAiKey()
   if (!apiKey) {
-    saveAiErrorRecord(latestContact, instance, 'Secret OPENAI_API_KEY ausente')
+    saveAiErrorRecord(latestContact, instance, 'Secret OPENAI_API_KEY ausente', {
+      status: 'falhou',
+      reason: 'Secret OPENAI_API_KEY ausente',
+      sessionId: '',
+      turnId: '',
+      sourceIds: sourceIds,
+      triggerBody: combinedBody,
+    })
     $app.logger().error('AI aborted: no OPENAI_API_KEY secret')
     return e.next()
   }
@@ -714,6 +798,7 @@ onRecordAfterCreateSuccess((e) => {
   try {
     let reply = ''
     let failReason = ''
+    let turnId = ''
     let staleDiscarded = false
 
     if (sessionId) {
@@ -790,6 +875,7 @@ onRecordAfterCreateSuccess((e) => {
         })
         if (pr.text) {
           reply = pr.text
+          turnId = pr.turnId || ''
           $app
             .logger()
             .info(
@@ -805,6 +891,7 @@ onRecordAfterCreateSuccess((e) => {
           // Turno atual terminou sem resposta: falha definitiva — NÃO reutiliza
           // texto antigo e NÃO reenvia o input em nova sessão.
           failReason = pr.reason
+          turnId = pr.turnId || ''
         }
       }
 
@@ -829,9 +916,20 @@ onRecordAfterCreateSuccess((e) => {
       if (created.sessionId) sessionId = created.sessionId
       if (created.reply) {
         reply = created.reply
+        turnId = created.turnId || ''
       } else {
         failReason = created.reason || 'nova sessão não retornou final_answer'
       }
+    }
+
+    // v0.0.88 — APENAS observabilidade: metadados do desfecho desta rodada,
+    // gravados em whatsapp_messages (nada da lógica usa estes valores).
+    const roundMeta = {
+      sessionId: sessionId || '',
+      turnId: turnId || '',
+      sourceIds: sourceIds,
+      triggerBody: combinedBody,
+      reason: failReason,
     }
 
     if (reply && sessionId) {
@@ -920,16 +1018,28 @@ onRecordAfterCreateSuccess((e) => {
     }
 
     if (reply) {
+      // Observabilidade: desfecho 'enviada' — status/reason/sessão/turno vão na
+      // MESMA mensagem ai_response que o cliente recebe (sem registro extra).
+      const okMeta = {}
+      for (const k in roundMeta) okMeta[k] = roundMeta[k]
+      okMeta.status = 'enviada'
+      okMeta.reason = ''
       sendWhatsappText(
         instanceName,
         latestContact.getString('remote_jid'),
         reply,
         'ai_response',
         latestContact,
+        okMeta,
       )
     } else if (staleDiscarded) {
-      // Resposta descartada como obsoleta: NADA é registrado nem enviado — a
-      // rodada mais recente responde tudo (a pendente segue como pendente).
+      // Resposta descartada como obsoleta: NADA é enviado ao cliente — apenas
+      // o registro de desfecho da rodada (v0.0.88, observabilidade).
+      const staleMeta = {}
+      for (const k in roundMeta) staleMeta[k] = roundMeta[k]
+      staleMeta.status = 'descartada'
+      staleMeta.reason = 'resposta obsoleta: existe entrada mais recente sem resposta'
+      saveAiLogRecord(latestContact, instance, staleMeta)
       $app
         .logger()
         .info(
@@ -939,15 +1049,23 @@ onRecordAfterCreateSuccess((e) => {
         )
     } else {
       // Falha da IA NÃO é enviada ao cliente. Só registra e loga.
-      saveAiErrorRecord(
-        latestContact,
-        instance,
-        failReason || 'resposta vazia, obsoleta ou falha na chamada à OpenAI Agents API',
-      )
+      const failMeta = {}
+      for (const k in roundMeta) failMeta[k] = roundMeta[k]
+      failMeta.status = 'falhou'
+      failMeta.reason =
+        failReason || 'resposta vazia, obsoleta ou falha na chamada à OpenAI Agents API'
+      saveAiErrorRecord(latestContact, instance, failMeta.reason, failMeta)
       $app.logger().error('AI reply not sent', 'contact', contactId, 'reason', failReason)
     }
   } catch (err) {
-    saveAiErrorRecord(latestContact, instance, String(err))
+    saveAiErrorRecord(latestContact, instance, String(err), {
+      status: 'falhou',
+      reason: String(err),
+      sessionId: typeof sessionId === 'string' ? sessionId : '',
+      turnId: '',
+      sourceIds: sourceIds,
+      triggerBody: combinedBody,
+    })
     $app.logger().error('AI response failed', 'error', String(err))
   }
 
