@@ -63,6 +63,7 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { PropertyCatalog } from '@/components/inbox/PropertyCatalog'
+import { AiLogsPanel } from '@/components/inbox/AiLogsPanel'
 import { ContactTags } from '@/components/inbox/ContactTags'
 import { TagsInput } from '@/components/inbox/TagsInput'
 import type { Property } from '@/services/properties'
@@ -80,6 +81,7 @@ export default function Inbox() {
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [instance, setInstance] = useState<any>(null)
   const [activeTab, setActiveTab] = useState('conversas')
+  const [aiLogsOpen, setAiLogsOpen] = useState(false)
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({})
   const [contactToDelete, setContactToDelete] = useState<any | null>(null)
   const [tagSearch, setTagSearch] = useState('')
@@ -841,11 +843,17 @@ export default function Inbox() {
               <TabsTrigger value="imoveis" className="flex-1 text-xs">
                 Imóveis
               </TabsTrigger>
+              <TabsTrigger value="ai-logs" className="flex-1 text-xs gap-1">
+                <Sparkles className="h-3 w-3" />
+                Logs da IA
+              </TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
 
-        {activeTab === 'conversas' ? (
+        {activeTab === 'ai-logs' ? (
+          <AiLogsPanel contacts={contacts} />
+        ) : activeTab === 'conversas' ? (
           <>
             <div className="px-5 py-3 border-b border-zinc-200/70 bg-white">
               <div className="relative">
