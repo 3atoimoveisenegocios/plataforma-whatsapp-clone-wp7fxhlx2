@@ -83,6 +83,13 @@
  *       usando a entrada mais recente como gatilho, respeitando horário
  *       comercial e o teto de rodadas. Nada é apagado e nada é enviado ao
  *       cliente em caso de erro.
+ * v0.0.93: vazamento da pausa — mensagens enfileiradas ANTES de agent_paused
+ *   virar true eram drenadas pelo cron de segurança DEPOIS da reativação (a
+ *   IA respondia mensagens enviadas com a IA desativada). A fila é limpa na
+ *   pausa (on_contact_pause_clear_queue.js) e o cron ignora pendências
+ *   anteriores ao `updated` do contato. Este arquivo não muda: o hook JÁ
+ *   sai cedo quando agent_paused (linha ~634) — mensagens que chegam
+ *   durante a pausa nunca entram na fila.
  */
 /* eslint-disable no-unused-vars */
 // JSVM (goja) não suporta funções async — o callback é síncrono (nada de await aqui).

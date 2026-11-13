@@ -149,12 +149,21 @@ routerAdd(
     // Skip validation to allow files larger than 5MB default
     $app.saveNoValidate(msgRecord)
 
+    // last_message/last_message_at só são atualizados para mensagens 'out' —
+    // um saveNoValidate do contato em mensagens 'in' renovaria o `updated`
+    // dele e revalidaria pendências antigas da fila da IA (varredura de
+    // segurança julga ai_pending_at contra `updated`).
     let lastMsgPreview = text
     if (type === 'image') lastMsgPreview = '📷 Foto'
     else if (type === 'video') lastMsgPreview = '🎥 Vídeo'
     else if (type === 'audio') lastMsgPreview = '🎵 Áudio'
     else if (type === 'document') lastMsgPreview = '📄 Documento'
 
+    // Este endpoint SEMPRE envia mensagens 'out' (o frontend só o usa para
+    // resposta manual); o last_message/last_message_at é do PREVIEW ENVIADO.
+    // Um save do contato em caminho 'in' renovaria o `updated` dele e
+    // revalidaria pendências antigas da fila da IA (a varredura de segurança
+    // julga ai_pending_at contra `updated` — v0.0.93).
     contact.set('last_message', lastMsgPreview)
     contact.set('last_message_at', new Date().toISOString())
     $app.saveNoValidate(contact)

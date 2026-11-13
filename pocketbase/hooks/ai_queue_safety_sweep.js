@@ -13,6 +13,23 @@
  * erro ao cliente. Idempotente: se outra execução (hook ou cron) já tem rodada
  * aberta e recente (ai_round_open_at), NÃO drena (evita rodada duplicada).
  *
+ * v0.0.93 — vazamento da pausa: mensagens enfileiradas ANTES de agent_paused
+ * virar true eram drenadas DEPOIS da reativação (a IA respondia mensagens
+ * enviadas com a IA desativada — relato do usuário de 13/11). Correções:
+ * (a) contatos pausados são pulados (já existia, mantido);
+ * (b) pendências gravadas antes do instante em que a IA foi reativada NÃO são
+ *     processadas — a referência é o `updated` do contato: a pausa (hook
+ *     on_contact_pause_clear_queue.js) e a própria reativação atualizam o
+ *     registro, então qualquer ai_pending_at mais antigo que `updated` é
+ *     pendência de antes da reativação e é descartada (fila limpa, sem resposta).
+ *     Mensagens que chegam DEPOIS da reativação (hook sai cedo enquanto
+ *     paused) têm ai_pending_at >= updated e continuam sendo processadas.
+ *     Campo de reativação dedicado não foi necessário — usa-se o `updated`
+ *     existente (nenhuma migração).
+ *     Efeito colateral aceitável: uma pendência órfã que sobreviveu a uma
+ *     edição qualquer do contato é descartada também — seguro para o usuário
+ *     (nunca responde mensagem de quando a IA estava desativada).
+ *
  * Nota JSVM: toda a lógica fica inline no callback do cron (declarações de topo
  * NÃO são visíveis dentro de callbacks no pool de VMs do PocketBase).
  */
@@ -96,6 +113,29 @@ cronAdd('ai_queue_safety_sweep', '*/1 * * * *', () => {
       if (roundOpenAtStr) {
         const openMs = parseTs(roundOpenAtStr)
         if (openMs > 0 && Date.now() - openMs < ROUND_OPEN_STALE_MS) continue
+      }
+
+      // v0.0.93 — pendências de ANTES da reativação: a IA foi reativada em
+      // algum momento entre a última atualização do contato (`updated`) e
+      // agora. Pendência gravada antes de `updated` foi enfileirada com a IA
+      // desativada (a fila é limpa na pausa; se sobrou, é resíduo pré-pausa) —
+      // NUNCA é respondida: limpa a fila e sai, sem tocar em nada mais.
+      const updatedMs = parseTs(latestContact.get('updated'))
+      const pendingAtMsC = parseTs(latestContact.getString('ai_pending_at'))
+      if (updatedMs > 0 && (pendingAtMsC === 0 || pendingAtMsC < updatedMs)) {
+        try {
+          const c = $app.findRecordById('whatsapp_contacts', contactId)
+          writeJsonArray(c, 'ai_pending_ids', [])
+          $app.saveNoValidate(c)
+          $app
+            .logger()
+            .info(
+              'AI safety sweep: pre-reactivation queue discarded (not answered)',
+              'contact',
+              contactId,
+            )
+        } catch (_) {}
+        continue
       }
 
       // Horário comercial (do agente da instância do contato).
