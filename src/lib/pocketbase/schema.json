@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-13T15:18:33.615Z",
+  "generatedAt": "2026-11-13T16:06:29.315Z",
   "collections": [
     {
       "name": "users",
@@ -206,6 +206,12 @@
         },
         {
           "name": "ai_pending_at",
+          "type": "date",
+          "required": false,
+          "system": false
+        },
+        {
+          "name": "ai_round_open_at",
           "type": "date",
           "required": false,
           "system": false

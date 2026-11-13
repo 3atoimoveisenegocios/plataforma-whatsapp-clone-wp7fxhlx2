@@ -68,11 +68,41 @@
  *   ROUND_STALE_AFTER_MS=10min). A pendência sempre é processada: ou pela
  *   execução do debounce vigente, ou pela reexecução ao fim da rodada
  *   anterior — tudo síncrono, no mesmo callback, sem serviço externo.
+ * v0.0.92: fila travada SEM rodada em andamento — comprovado em produção
+ *   (contato 5511995464029/Renan, 13/11 ~15:41–15:48): 3 entradas em
+ *   ai_pending_ids, nenhum turno aberto, nenhum log de hook, silencioso.
+ *   O dreno do loop v0.0.91 nunca dispara quando NENHUMA rodada roda — e
+ *   nada reprocessa o enfileiramento sozinho. Três correções:
+ *   (1) mensagem nova SEM rodada em andamento abre a rodada IMEDIATAMENTE
+ *       (com a mais recente como gatilho) — nunca só enfileirar;
+ *   (2) o check de "rodada em andamento" não pode ficar preso: se o último
+ *       sinal de atividade (ai_pending_at) tem mais de ACTIVITY_STALE_MS
+ *       (3 min), NÃO há rodada ativa — processa;
+ *   (3) varredura de segurança no cron existente (a cada 1 min): drena
+ *       contatos com ai_pending_ids não vazio e ai_pending_at antigo,
+ *       usando a entrada mais recente como gatilho, respeitando horário
+ *       comercial e o teto de rodadas. Nada é apagado e nada é enviado ao
+ *       cliente em caso de erro.
  */
 /* eslint-disable no-unused-vars */
 // JSVM (goja) não suporta funções async — o callback é síncrono (nada de await aqui).
 onRecordAfterCreateSuccess((e) => {
+  // Marca (na variável de instância do evento) que ESTA execução do hook abriu
+  // a rodada agora — usado pela varredura do cron para não drenar uma fila
+  // que ACABOU de ganhar uma rodada em andamento (evita rodada duplicada).
+  if (!e.record) return e.next()
   const OPENAI_AGENT_ID = 'agent_6af5dc6ca48c8191b0c1a59374012598'
+  // v0.0.92: idade máxima (ms) do último sinal de atividade (ai_pending_at) para
+  //   considerar que EXISTE uma rodada em andamento. Passou disso: nenhuma rodada
+  //   ativa (travada/morta) — a fila é processada imediatamente.
+  const ACTIVITY_STALE_MS = 3 * 60 * 1000
+  // v0.0.92: marca persistente (no contato) de que uma rodada está aberta AGORA
+  //   para esta execução — usado pelo cron de segurança para não drenar uma fila
+  //   cuja rodada acabou de começar (evita rodada duplicada).
+  const AI_ROUND_OPEN_AT = 'ai_round_open_at'
+  // v0.0.92: idade máxima (ms) de uma rodada marcada como aberta — passou disso
+  //   o cron considera a rodada morta e drena a fila.
+  const ROUND_OPEN_STALE_MS = 4 * 60 * 1000
   const OPENAI_BETA_HEADER = 'agents=v1'
   const AGENTS_BASE = 'https://api.openai.com/v1/agents'
   const DEBOUNCE_MS = 5000
@@ -677,27 +707,68 @@ onRecordAfterCreateSuccess((e) => {
     }
   }
 
-  // Relê o contato: se outra mensagem chegou durante o debounce, ela atualizou
-  // ai_pending_at — só a execução mais recente segue (as antigas saem).
+  // ===== Rodada em andamento? (v0.0.92) =====
+  // Fonte de verdade: a marca persistente ai_round_open_at (gravada pelo hook
+  // e pelo cron quando uma rodada começa). NÃO é a atividade recente
+  // (ai_pending_at fresco NÃO prova rodada ativa — era exatamente o bug do
+  // Renan: a execução morria antes de abrir a rodada e a fila ficava presa).
+  // A marca expira sozinha (ROUND_OPEN_STALE_MS = 4 min): passou disso,
+  // nenhuma rodada ativa — processa AGORA, nunca fica presa.
   let latestContact
   try {
     latestContact = $app.findRecordById('whatsapp_contacts', contact.id)
   } catch (_) {
     return e.next()
   }
-  const pendingAtStr = latestContact.getString('ai_pending_at')
-  let pendingAt = 0
-  if (pendingAtStr) {
+  const roundOpenAtStr = latestContact.getString(AI_ROUND_OPEN_AT)
+  let roundOpenAt = 0
+  if (roundOpenAtStr) {
     try {
-      pendingAt = new Date(pendingAtStr.replace(' ', 'T')).getTime()
+      roundOpenAt = parseTs(roundOpenAtStr)
     } catch (_) {}
   }
-  const waitedEnough = Date.now() - pendingAt >= DEBOUNCE_MS - 500
-  if (pendingAt > 0 && !waitedEnough) {
+  const roundOpenFresh = roundOpenAt > 0 && Date.now() - roundOpenAt < ROUND_OPEN_STALE_MS
+
+  // Debounce com a entrada mais recente: se a ÚLTIMA pendência do contato é
+  // recente (< DEBOUNCE_MS), espera o resto do debounce (agrupa mensagens em
+  // rajada num turno só) e ABRIRÁ a rodada — nunca só enfileirar, pois
+  // roundOpenFresh === false aqui significa nenhuma rodada ativa.
+  const pendingAtMs = parseTs(latestContact.getString('ai_pending_at'))
+  const sinceLastActivityMs = pendingAtMs > 0 ? Date.now() - pendingAtMs : DEBOUNCE_MS
+  if (sinceLastActivityMs < DEBOUNCE_MS) {
     $app
       .logger()
       .info(
-        'AI debounce: newer message pending — round will requeue this event',
+        'AI debounce: no round in progress — waiting debounce before opening round',
+        'contact',
+        contactId,
+        'message_id',
+        messageId,
+        'wait_ms',
+        DEBOUNCE_MS - sinceLastActivityMs,
+      )
+    waitMs(Math.max(0, DEBOUNCE_MS - sinceLastActivityMs))
+  } else {
+    // Sem rodada em andamento (marca ausente/antiga): abre a rodada
+    // IMEDIATAMENTE — nunca apenas enfileirar.
+    $app
+      .logger()
+      .info(
+        'AI round: opening round immediately (no active round)',
+        'contact',
+        contactId,
+        'message_id',
+        messageId,
+      )
+  }
+  if (roundOpenFresh) {
+    // Há rodada em andamento (ativa de verdade): enfileira como pendência —
+    // o fim da rodada vigente reprocessa a fila (loop v0.0.91) e, se ela
+    // morrer, o cron de segurança drena.
+    $app
+      .logger()
+      .info(
+        'AI round in progress — queued for end-of-round requeue or safety cron',
         'contact',
         contactId,
         'message_id',
@@ -743,6 +814,18 @@ onRecordAfterCreateSuccess((e) => {
   // rodada o loop relê o contato: se sobrou entrada com texto não respondida
   // (a que chegou durante a rodada), roda MAIS uma rodada com a mensagem mais
   // recente como gatilho — a IA sempre responde à mensagem mais atual.
+  // v0.0.92: marca no contato que UMA rodada está aberta agora (com o instante) —
+  // o cron de segurança vê isso e NÃO drena uma fila que acabou de ganhar
+  // rodada. Expira sozinha (ROUND_OPEN_STALE_MS) — nunca prende a fila.
+  try {
+    const cOpen = $app.findRecordById('whatsapp_contacts', contact.id)
+    cOpen.set(AI_ROUND_OPEN_AT, new Date().toISOString())
+    $app.saveNoValidate(cOpen)
+    latestContact = cOpen
+  } catch (err) {
+    $app.logger().warn('AI round: failed to mark round open', 'error', String(err))
+  }
+
   const queueStartMs = Date.now()
   let roundIndex = 0
   // Id da entrada mais recente que causou o último descarte de obsoletas
@@ -1267,6 +1350,16 @@ onRecordAfterCreateSuccess((e) => {
       break
     }
   }
+
+  // ===== v0.0.92: fecha a marca de "rodada aberta" =====
+  // Todo caminho de saída do loop (break, teto de rodadas, fim natural) passa
+  // aqui — a marca nunca fica órfã (o cron de segurança a ignora quando antiga,
+  // mas fechar aqui evita esperar o ROUND_OPEN_STALE_MS à toa).
+  try {
+    const cClose = $app.findRecordById('whatsapp_contacts', contact.id)
+    cClose.set(AI_ROUND_OPEN_AT, '')
+    $app.saveNoValidate(cClose)
+  } catch (_) {}
 
   e.next()
 }, 'whatsapp_messages')
