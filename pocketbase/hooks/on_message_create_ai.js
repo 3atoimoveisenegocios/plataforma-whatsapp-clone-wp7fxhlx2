@@ -57,6 +57,17 @@
  *       descarta por segurança (fail-closed) logando o erro;
  *   (3) as esperas (debounce, polling, retry) não dependem mais de httpbin.org:
  *       waitMs() espera pelo relógio local e nunca lança.
+ * v0.0.91: fila de pendências — a mensagem que chega DURANTE uma rodada em
+ *   andamento nunca mais fica sem resposta. O evento dela saía no debounce
+ *   ("newer message pending — exiting") e a rodada vigente descartava a
+ *   própria resposta como obsoleta SEM processar a nova (comprovado em
+ *   produção, contato 5511967226712 em 13/11: ai_pending_ids ficou com a
+ *   mensagem órfã para sempre). Agora, ao final de CADA rodada, o mesmo
+ *   callback relê o contato e, se ainda há pendência não respondida, roda
+ *   outra rodada — em loop, com teto de segurança (MAX_ROUNDS_PER_EVENT=5,
+ *   ROUND_STALE_AFTER_MS=10min). A pendência sempre é processada: ou pela
+ *   execução do debounce vigente, ou pela reexecução ao fim da rodada
+ *   anterior — tudo síncrono, no mesmo callback, sem serviço externo.
  */
 /* eslint-disable no-unused-vars */
 // JSVM (goja) não suporta funções async — o callback é síncrono (nada de await aqui).
@@ -423,7 +434,7 @@ onRecordAfterCreateSuccess((e) => {
   }
 
   // Cria uma NOVA sessão já com o input e aguarda o primeiro turno dela completar.
-  // Retorna { sessionId, reply, hardFail, reason }.
+  // Retorna { sessionId, reply, hardFail, reason, turnId }.
   function createSessionAndGetReply(apiKey, combinedBody) {
     // Até 2 tentativas: erro 5xx na criação de sessão tem 1 retry com pequena
     // espera. O corpo/estado do erro é SEMPRE logado para diagnóstico.
@@ -613,8 +624,58 @@ onRecordAfterCreateSuccess((e) => {
   contact.set('ai_pending_at', new Date().toISOString())
   $app.saveNoValidate(contact)
 
-  // Espera o debounce (5s) para ver se chega outra mensagem do mesmo contato.
-  waitMs(DEBOUNCE_MS)
+  // ===== Fila de pendências (v0.0.91) =====
+  // A mensagem que chega DURANTE uma rodada em andamento vira pendência no
+  // contato. Antes, seu evento saía no debounce ("newer message pending —
+  // exiting") e nada mais a processava: a rodada vigente descartava a própria
+  // resposta como obsoleta e a mensagem ficava órfã em ai_pending_ids para
+  // sempre (contato 5511967226712, 13/11). Agora CADA execução do hook, ao
+  // final da sua rodada, relê o contato e — se ainda há pendência com texto
+  // não respondida — roda outra rodada com a mensagem mais recente como
+  // gatilho, em loop síncrono (sem serviço externo, sem setTimeout), até
+  // processar tudo ou atingir o teto de segurança (MAX_ROUNDS_PER_EVENT).
+  // Assim a IA SEMPRE responde à mensagem mais atual do cliente.
+  const MAX_ROUNDS_PER_EVENT = 5
+  const ROUND_STALE_AFTER_MS = 10 * 60 * 1000
+
+  // Id da entrada com texto mais recente ainda NÃO respondida do contato
+  // ('' se a fila está vazia) — usado pelo loop de rodadas para decidir se
+  // roda outra rodada após um descarte de obsoletas.
+  function newestUnansweredId() {
+    try {
+      const doneNow = readJsonArray(latestContact, 'ai_processed_ids')
+      const recent = $app.findRecordsByFilter(
+        'whatsapp_messages',
+        `contact_id='${contactId}' && direction='in'`,
+        '-created',
+        20,
+        0,
+      )
+      for (let i = 0; i < recent.length; i++) {
+        const m = recent[i]
+        if (!m.getString('body')) continue
+        const mid = m.getString('message_id') || m.id
+        if (doneNow.indexOf(mid) === -1) return mid
+      }
+    } catch (_) {}
+    return ''
+  }
+
+  function schedulePendingFollowUp(contactRecord, msg) {
+    try {
+      const c = $app.findRecordById('whatsapp_contacts', contactRecord.id)
+      const pending = readJsonArray(c, 'ai_pending_ids')
+      const mid = msg.getString('message_id') || msg.id
+      if (pending.indexOf(mid) === -1) {
+        pending.push(mid)
+        writeJsonArray(c, 'ai_pending_ids', pending)
+      }
+      c.set('ai_pending_at', new Date().toISOString())
+      $app.saveNoValidate(c)
+    } catch (err) {
+      $app.logger().warn('AI queue: failed to schedule pending follow-up', 'error', String(err))
+    }
+  }
 
   // Relê o contato: se outra mensagem chegou durante o debounce, ela atualizou
   // ai_pending_at — só a execução mais recente segue (as antigas saem).
@@ -636,12 +697,13 @@ onRecordAfterCreateSuccess((e) => {
     $app
       .logger()
       .info(
-        'AI debounce: newer message pending — exiting',
+        'AI debounce: newer message pending — round will requeue this event',
         'contact',
         contactId,
         'message_id',
         messageId,
       )
+    schedulePendingFollowUp(latestContact, msg)
     return e.next()
   }
 
@@ -676,397 +738,534 @@ onRecordAfterCreateSuccess((e) => {
       )
   }
 
-  // ===== Agente e horário comercial =====
-  let agents
-  try {
-    agents = $app.findRecordsByFilter(
-      'ai_agents',
-      `instance_id='${instanceId}' && active=true`,
-      '-created',
-      1,
-      0,
-    )
-  } catch (_) {
-    return e.next()
-  }
+  // ===== LOOP DE RODADAS (v0.0.91) =====
+  // Cada iteração processa as pendências ATUAIS do contato. Ao fim de cada
+  // rodada o loop relê o contato: se sobrou entrada com texto não respondida
+  // (a que chegou durante a rodada), roda MAIS uma rodada com a mensagem mais
+  // recente como gatilho — a IA sempre responde à mensagem mais atual.
+  const queueStartMs = Date.now()
+  let roundIndex = 0
+  // Id da entrada mais recente que causou o último descarte de obsoletas
+  // (referência para o debounce da re-fila após descarte).
+  let lastDiscardedNewestId = ''
 
-  if (!agents || agents.length === 0) return e.next()
-  const agent = agents[0]
+  while (roundIndex < MAX_ROUNDS_PER_EVENT && Date.now() - queueStartMs < ROUND_STALE_AFTER_MS) {
+    roundIndex++
+    $app.logger().info('AI round loop: starting round', 'contact', contactId, 'round', roundIndex)
 
-  // ===== BUSINESS HOURS CHECK =====
-  const businessHoursEnabled = agent.getBool('business_hours_enabled')
-  if (businessHoursEnabled) {
-    let operatingDays = []
+    // ===== Agente e horário comercial =====
+    let agents
     try {
-      const raw = agent.getString('operating_days')
-      if (raw) operatingDays = JSON.parse(raw)
-    } catch (_) {}
-
-    const startTime = agent.getString('start_time') || '09:00'
-    const endTime = agent.getString('end_time') || '18:00'
-    const outOfHoursMessage =
-      agent.getString('out_of_hours_message') ||
-      'No momento estamos fora do horario de atendimento. Retornaremos em breve!'
-
-    const now = new Date()
-    // Brasilia Time is UTC-3 year-round (DST abolished in 2019).
-    const localDate = new Date(now.getTime() - 3 * 60 * 60 * 1000)
-
-    // 0=Sunday, 1=Monday, ..., 6=Saturday
-    const currentDayNum = localDate.getUTCDay()
-    const currentMinutes = localDate.getUTCHours() * 60 + localDate.getUTCMinutes()
-    const startParts = startTime.split(':').map(Number)
-    const endParts = endTime.split(':').map(Number)
-    const startMinutes = (startParts[0] || 8) * 60 + startParts[1] * 1
-    const endMinutes = (endParts[0] || 18) * 60 + endParts[1] * 1
-
-    const dayNames = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado']
-    const currentDayName = dayNames[currentDayNum]
-    const isOperatingDay =
-      operatingDays.indexOf(currentDayNum) !== -1 || operatingDays.indexOf(currentDayName) !== -1
-    const isWithinHours = currentMinutes >= startMinutes && currentMinutes <= endMinutes
-
-    if (!isOperatingDay || !isWithinHours) {
-      const outInstance = $app.findRecordById('whatsapp_instances', agent.getString('instance_id'))
-      // Limpa as pendentes antes de sair (fora do horário, nada a responder).
-      writeJsonArray(latestContact, 'ai_pending_ids', [])
-      $app.saveNoValidate(latestContact)
-      sendWhatsappText(
-        outInstance.getString('instance_name'),
-        latestContact.getString('remote_jid'),
-        outOfHoursMessage,
-        'out_of_hours',
-        latestContact,
+      agents = $app.findRecordsByFilter(
+        'ai_agents',
+        `instance_id='${instanceId}' && active=true`,
+        '-created',
+        1,
+        0,
       )
-      return e.next()
+    } catch (_) {
+      break
     }
-  }
-  // ===== END BUSINESS HOURS CHECK =====
 
-  const instance = $app.findRecordById('whatsapp_instances', agent.getString('instance_id'))
-  const instanceName = instance.getString('instance_name')
+    if (!agents || agents.length === 0) break
+    const agent = agents[0]
 
-  // Mensagens pendentes do contato (as que chegaram desde a última resposta da IA).
-  let newInMessages = []
-  let sourceIds = []
-  let sourceLastAtMs = 0
-  try {
-    const history = $app.findRecordsByFilter(
-      'whatsapp_messages',
-      `contact_id='${contactId}'`,
-      '-created',
-      20,
-      0,
-    )
-    for (let i = 0; i < history.length; i++) {
-      const m = history[i]
-      if (m.getString('direction') !== 'in') break
-      if (m.getString('body')) {
-        newInMessages.push(m.getString('body'))
-        sourceIds.push(m.getString('message_id') || m.id)
-        // Instante da entrada mais recente que esta rodada vai responder
-        // (sent_at com fallback created) — base do descarte de obsoletas.
-        if (sourceLastAtMs === 0) {
-          const sa = m.getString('sent_at')
-          sourceLastAtMs = sa ? parseTs(sa) : parseTs(m.get('created'))
+    // ===== BUSINESS HOURS CHECK =====
+    const businessHoursEnabled = agent.getBool('business_hours_enabled')
+    if (businessHoursEnabled) {
+      let operatingDays = []
+      try {
+        const raw = agent.getString('operating_days')
+        if (raw) operatingDays = JSON.parse(raw)
+      } catch (_) {}
+
+      const startTime = agent.getString('start_time') || '09:00'
+      const endTime = agent.getString('end_time') || '18:00'
+      const outOfHoursMessage =
+        agent.getString('out_of_hours_message') ||
+        'No momento estamos fora do horario de atendimento. Retornaremos em breve!'
+
+      const now = new Date()
+      // Brasilia Time is UTC-3 year-round (DST abolished in 2019).
+      const localDate = new Date(now.getTime() - 3 * 60 * 60 * 1000)
+
+      // 0=Sunday, 1=Monday, ..., 6=Saturday
+      const currentDayNum = localDate.getUTCDay()
+      const currentMinutes = localDate.getUTCHours() * 60 + localDate.getUTCMinutes()
+      const startParts = startTime.split(':').map(Number)
+      const endParts = endTime.split(':').map(Number)
+      const startMinutes = (startParts[0] || 8) * 60 + startParts[1] * 1
+      const endMinutes = (endParts[0] || 18) * 60 + endParts[1] * 1
+
+      const dayNames = ['domingo', 'segunda', 'terca', 'quarta', 'quinta', 'sexta', 'sabado']
+      const currentDayName = dayNames[currentDayNum]
+      const isOperatingDay =
+        operatingDays.indexOf(currentDayNum) !== -1 || operatingDays.indexOf(currentDayName) !== -1
+      const isWithinHours = currentMinutes >= startMinutes && currentMinutes <= endMinutes
+
+      if (!isOperatingDay || !isWithinHours) {
+        const outInstance = $app.findRecordById(
+          'whatsapp_instances',
+          agent.getString('instance_id'),
+        )
+        // Limpa as pendentes antes de sair (fora do horário, nada a responder).
+        writeJsonArray(latestContact, 'ai_pending_ids', [])
+        $app.saveNoValidate(latestContact)
+        sendWhatsappText(
+          outInstance.getString('instance_name'),
+          latestContact.getString('remote_jid'),
+          outOfHoursMessage,
+          'out_of_hours',
+          latestContact,
+        )
+        break
+      }
+    }
+    // ===== END BUSINESS HOURS CHECK =====
+
+    const instance = $app.findRecordById('whatsapp_instances', agent.getString('instance_id'))
+    const instanceName = instance.getString('instance_name')
+
+    // Mensagens pendentes do contato (as que chegaram desde a última resposta da IA).
+    // Relidas A CADA RODADA: o que chegou durante a rodada anterior entra aqui.
+    let newInMessages = []
+    let sourceIds = []
+    let sourceLastAtMs = 0
+    try {
+      const history = $app.findRecordsByFilter(
+        'whatsapp_messages',
+        `contact_id='${contactId}'`,
+        '-created',
+        20,
+        0,
+      )
+      for (let i = 0; i < history.length; i++) {
+        const m = history[i]
+        if (m.getString('direction') !== 'in') {
+          // v0.0.91: ai_log/ai_error são registros META do desfecho de uma
+          // rodada — não são mensagens da conversa. Sem isso, o registro do
+          // descarte (criado logo após a entrada) era o mais novo do histórico
+          // e a rodada seguinte não via as pendências dele.
+          const at = m.getString('automation_type')
+          if (at === 'ai_log' || at === 'ai_error') continue
+          break
+        }
+        const mid = m.getString('message_id') || m.id
+        const doneNow = readJsonArray(latestContact, 'ai_processed_ids')
+        if (doneNow.indexOf(mid) !== -1) break // já respondida por rodada anterior
+        if (m.getString('body')) {
+          newInMessages.push(m.getString('body'))
+          sourceIds.push(mid)
+          // Instante da entrada mais recente que esta rodada vai responder
+          // (sent_at com fallback created) — base do descarte de obsoletas.
+          if (sourceLastAtMs === 0) {
+            const sa = m.getString('sent_at')
+            sourceLastAtMs = sa ? parseTs(sa) : parseTs(m.get('created'))
+          }
         }
       }
+      newInMessages.reverse()
+      sourceIds.reverse()
+    } catch (err) {}
+
+    const combinedBody = newInMessages.join('\n')
+    if (!combinedBody) {
+      // Nada não-respondido com texto — a fila deste contato está vazia.
+      try {
+        const c = $app.findRecordById('whatsapp_contacts', contact.id)
+        writeJsonArray(c, 'ai_pending_ids', [])
+        $app.saveNoValidate(c)
+      } catch (_) {}
+      break
     }
-    newInMessages.reverse()
-    sourceIds.reverse()
-  } catch (err) {}
 
-  const combinedBody = newInMessages.join('\n')
-  if (!combinedBody) return e.next()
+    const apiKey = getOpenAiKey()
+    if (!apiKey) {
+      saveAiErrorRecord(latestContact, instance, 'Secret OPENAI_API_KEY ausente', {
+        status: 'falhou',
+        reason: 'Secret OPENAI_API_KEY ausente',
+        sessionId: '',
+        turnId: '',
+        sourceIds: sourceIds,
+        triggerBody: combinedBody,
+      })
+      $app.logger().error('AI aborted: no OPENAI_API_KEY secret')
+      break
+    }
 
-  const apiKey = getOpenAiKey()
-  if (!apiKey) {
-    saveAiErrorRecord(latestContact, instance, 'Secret OPENAI_API_KEY ausente', {
-      status: 'falhou',
-      reason: 'Secret OPENAI_API_KEY ausente',
-      sessionId: '',
-      turnId: '',
-      sourceIds: sourceIds,
-      triggerBody: combinedBody,
-    })
-    $app.logger().error('AI aborted: no OPENAI_API_KEY secret')
-    return e.next()
-  }
-
-  let sessionId = latestContact.getString('ai_session_id')
-
-  try {
-    let reply = ''
-    let failReason = ''
-    let turnId = ''
+    let sessionId = latestContact.getString('ai_session_id')
+    // Usados também pelo reavaliador de fim de rodada (fora do try).
     let staleDiscarded = false
 
-    if (sessionId) {
-      // Continua a sessão existente na OpenAI (memória da conversa fica lá).
-      $app
-        .logger()
-        .info('AI session: continuing existing', 'session_id', sessionId, 'contact', contactId)
+    try {
+      let reply = ''
+      let failReason = ''
+      let turnId = ''
 
-      // Turno mais recente ANTES do input: serve de marca para identificar o
-      // turno NOVO que o input vai criar (nunca aceitar turnos anteriores).
-      const priorTurns = listSessionTurns(sessionId, apiKey)
-      const priorTurnId = priorTurns.length > 0 && priorTurns[0].id ? String(priorTurns[0].id) : ''
-      const t0Ms = Date.now()
+      if (sessionId) {
+        // Continua a sessão existente na OpenAI (memória da conversa fica lá).
+        $app
+          .logger()
+          .info('AI session: continuing existing', 'session_id', sessionId, 'contact', contactId)
 
-      const eventsUrl = `${AGENTS_BASE}/sessions/${sessionId}/events`
-      const eventPayload = {
-        events: [
-          {
-            type: 'agent.session.input.message',
-            input: [
-              {
-                role: 'user',
-                content: [{ type: 'input_text', text: combinedBody }],
-              },
-            ],
-          },
-        ],
-      }
+        // Turno mais recente ANTES do input: serve de marca para identificar o
+        // turno NOVO que o input vai criar (nunca aceitar turnos anteriores).
+        const priorTurns = listSessionTurns(sessionId, apiKey)
+        const priorTurnId =
+          priorTurns.length > 0 && priorTurns[0].id ? String(priorTurns[0].id) : ''
+        const t0Ms = Date.now()
 
-      let continuationOk = false
-      let pinnedTurnId = ''
-      try {
-        const eventsRes = callOpenAiAgentsApi(eventsUrl, apiKey, eventPayload, 90, {
-          'Idempotency-Key': 'msgs-' + sourceIds.join('-'),
-        })
-        if (
-          eventsRes.statusCode === 200 ||
-          eventsRes.statusCode === 201 ||
-          eventsRes.statusCode === 202
-        ) {
-          continuationOk = true
-          // Se a resposta do POST trouxer o id do turno criado, fixa nele.
-          const evJson = eventsRes.json || {}
-          const candidates = [evJson.turn_id, evJson.id, evJson.turn && evJson.turn.id]
-          for (let ci = 0; ci < candidates.length; ci++) {
-            const cv = candidates[ci]
-            if (typeof cv === 'string' && cv.indexOf('turn') !== -1) {
-              pinnedTurnId = cv
-              break
+        const eventsUrl = `${AGENTS_BASE}/sessions/${sessionId}/events`
+        const eventPayload = {
+          events: [
+            {
+              type: 'agent.session.input.message',
+              input: [
+                {
+                  role: 'user',
+                  content: [{ type: 'input_text', text: combinedBody }],
+                },
+              ],
+            },
+          ],
+        }
+
+        let continuationOk = false
+        let pinnedTurnId = ''
+        try {
+          const eventsRes = callOpenAiAgentsApi(eventsUrl, apiKey, eventPayload, 90, {
+            'Idempotency-Key': 'msgs-' + sourceIds.join('-'),
+          })
+          if (
+            eventsRes.statusCode === 200 ||
+            eventsRes.statusCode === 201 ||
+            eventsRes.statusCode === 202
+          ) {
+            continuationOk = true
+            // Se a resposta do POST trouxer o id do turno criado, fixa nele.
+            const evJson = eventsRes.json || {}
+            const candidates = [evJson.turn_id, evJson.id, evJson.turn && evJson.turn.id]
+            for (let ci = 0; ci < candidates.length; ci++) {
+              const cv = candidates[ci]
+              if (typeof cv === 'string' && cv.indexOf('turn') !== -1) {
+                pinnedTurnId = cv
+                break
+              }
             }
+          } else {
+            $app
+              .logger()
+              .warn(
+                'AI session events failed',
+                'status',
+                eventsRes.statusCode,
+                'body',
+                JSON.stringify(eventsRes.json || {}),
+              )
           }
-        } else {
+        } catch (err) {
+          $app.logger().warn('AI session events threw', 'error', String(err))
+        }
+
+        if (continuationOk) {
+          const pr = pollForTurnReply(sessionId, apiKey, {
+            priorTurnId: priorTurnId,
+            pinnedTurnId: pinnedTurnId,
+            t0Ms: t0Ms,
+            maxAttempts: 30,
+            delaySec: 3,
+          })
+          if (pr.text) {
+            reply = pr.text
+            turnId = pr.turnId || ''
+            $app
+              .logger()
+              .info(
+                'AI session continued OK',
+                'session_id',
+                sessionId,
+                'contact',
+                contactId,
+                'reply_len',
+                reply.length,
+              )
+          } else if (pr.hardFail) {
+            // Turno atual terminou sem resposta: falha definitiva — NÃO reutiliza
+            // texto antigo e NÃO reenvia o input em nova sessão.
+            failReason = pr.reason
+            turnId = pr.turnId || ''
+          }
+        }
+
+        if (!reply && !failReason) {
+          // Continuação expirou/sem resposta atribuível ao turno atual — nova
+          // sessão como retry (o input é reenviado do zero).
           $app
             .logger()
             .warn(
-              'AI session events failed',
-              'status',
-              eventsRes.statusCode,
-              'body',
-              JSON.stringify(eventsRes.json || {}),
-            )
-        }
-      } catch (err) {
-        $app.logger().warn('AI session events threw', 'error', String(err))
-      }
-
-      if (continuationOk) {
-        const pr = pollForTurnReply(sessionId, apiKey, {
-          priorTurnId: priorTurnId,
-          pinnedTurnId: pinnedTurnId,
-          t0Ms: t0Ms,
-          maxAttempts: 30,
-          delaySec: 3,
-        })
-        if (pr.text) {
-          reply = pr.text
-          turnId = pr.turnId || ''
-          $app
-            .logger()
-            .info(
-              'AI session continued OK',
-              'session_id',
+              'AI session continuation unusable — creating a new session',
+              'old_session_id',
               sessionId,
-              'contact',
-              contactId,
-              'reply_len',
-              reply.length,
             )
-        } else if (pr.hardFail) {
-          // Turno atual terminou sem resposta: falha definitiva — NÃO reutiliza
-          // texto antigo e NÃO reenvia o input em nova sessão.
-          failReason = pr.reason
-          turnId = pr.turnId || ''
+          sessionId = ''
         }
       }
 
       if (!reply && !failReason) {
-        // Continuação expirou/sem resposta atribuível ao turno atual — nova
-        // sessão como retry (o input é reenviado do zero).
+        // Cria uma nova sessão no agente salvo (primeira mensagem ou retry).
         $app
           .logger()
-          .warn(
-            'AI session continuation unusable — creating a new session',
-            'old_session_id',
-            sessionId,
+          .info('AI session: creating new', 'agent', OPENAI_AGENT_ID, 'contact', contactId)
+        const created = createSessionAndGetReply(apiKey, combinedBody)
+        if (created.sessionId) sessionId = created.sessionId
+        if (created.reply) {
+          reply = created.reply
+          turnId = created.turnId || ''
+        } else {
+          failReason = created.reason || 'nova sessão não retornou final_answer'
+        }
+      }
+
+      // v0.0.88 — APENAS observabilidade: metadados do desfecho desta rodada,
+      // gravados em whatsapp_messages (nada da lógica usa estes valores).
+      const roundMeta = {
+        sessionId: sessionId || '',
+        turnId: turnId || '',
+        sourceIds: sourceIds,
+        triggerBody: combinedBody,
+        reason: failReason,
+      }
+
+      if (reply && sessionId) {
+        latestContact.set('ai_session_id', sessionId)
+        $app.saveNoValidate(latestContact)
+        $app.logger().info('AI session saved', 'session_id', sessionId, 'contact', contactId)
+      }
+
+      if (reply) {
+        // ===== Mensagens obsoletas: se existe entrada com TEXTO mais recente do
+        // que a última que esta rodada está respondendo, descarta esta resposta —
+        // a rodada mais recente (debounce) responde com o contexto completo.
+        // Comparação por INSTANTE (sent_at, com fallback created) contra TODAS as
+        // 'in' do contato com body não-vazio: mensagens vazias não contam nem
+        // bloqueiam (elas ficam com created maior e antes mascaravam a pergunta
+        // nova — caso 20:07:46/20:07:54 do contato 5511995464029).
+        try {
+          const respondedAtMs = sourceLastAtMs
+          // Declarada ANTES do loop (usada na comparação abaixo).
+          const nowProcessed = readJsonArray(latestContact, 'ai_processed_ids')
+          const inHistory = $app.findRecordsByFilter(
+            'whatsapp_messages',
+            `contact_id='${contactId}' && direction='in'`,
+            '-created',
+            20,
+            0,
           )
-        sessionId = ''
+          for (let ni = 0; ni < inHistory.length; ni++) {
+            const m = inHistory[ni]
+            if (!m.getString('body')) continue // vazia não conta
+            const mid = m.getString('message_id') || m.id
+            if (sourceIds.indexOf(mid) !== -1) continue // é a própria fonte desta rodada
+            const mAt = m.getString('sent_at')
+              ? parseTs(m.getString('sent_at'))
+              : parseTs(m.get('created'))
+            if (mAt <= 0 || respondedAtMs <= 0) continue
+            if (mAt > respondedAtMs && nowProcessed.indexOf(mid) === -1) {
+              $app
+                .logger()
+                .info(
+                  'AI stale reply discarded — newer text input exists',
+                  'contact',
+                  contactId,
+                  'newer',
+                  mid,
+                  'responding_to_at',
+                  new Date(respondedAtMs).toISOString(),
+                  'sources',
+                  sourceIds.join(','),
+                )
+              reply = ''
+              break
+            }
+          }
+        } catch (err) {
+          // Fail-closed: sem conseguir conferir obsolescência, descarta por segurança.
+          reply = ''
+          $app
+            .logger()
+            .error('AI stale check failed — discarding reply (fail-closed)', 'error', String(err))
+        }
       }
-    }
 
-    if (!reply && !failReason) {
-      // Cria uma nova sessão no agente salvo (primeira mensagem ou retry).
-      $app.logger().info('AI session: creating new', 'agent', OPENAI_AGENT_ID, 'contact', contactId)
-      const created = createSessionAndGetReply(apiKey, combinedBody)
-      if (created.sessionId) sessionId = created.sessionId
-      if (created.reply) {
-        reply = created.reply
-        turnId = created.turnId || ''
-      } else {
-        failReason = created.reason || 'nova sessão não retornou final_answer'
-      }
-    }
+      // Quando a resposta foi DESCARTADA como obsoleta, NÃO marca as fontes como
+      // processadas e NÃO limpa as pendentes: a mensagem de texto mais recente
+      // ("Vcs tem casa ?") precisa ser respondida pela rodada mais recente —
+      // sem isso ela ficava órfã (respondida só pelo 'Obrigado' descartado).
+      // Nas falhas reais da IA (hardFail/timeout), marca como processadas para
+      // não reprocessar infinitamente a mesma entrada.
+      if (!reply && !failReason) staleDiscarded = true
 
-    // v0.0.88 — APENAS observabilidade: metadados do desfecho desta rodada,
-    // gravados em whatsapp_messages (nada da lógica usa estes valores).
-    const roundMeta = {
-      sessionId: sessionId || '',
-      turnId: turnId || '',
-      sourceIds: sourceIds,
-      triggerBody: combinedBody,
-      reason: failReason,
-    }
-
-    if (reply && sessionId) {
-      latestContact.set('ai_session_id', sessionId)
-      $app.saveNoValidate(latestContact)
-      $app.logger().info('AI session saved', 'session_id', sessionId, 'contact', contactId)
-    }
-
-    if (reply) {
-      // ===== Mensagens obsoletas: se existe entrada com TEXTO mais recente do
-      // que a última que esta rodada está respondendo, descarta esta resposta —
-      // a rodada mais recente (debounce) responde com o contexto completo.
-      // Comparação por INSTANTE (sent_at, com fallback created) contra TODAS as
-      // 'in' do contato com body não-vazio: mensagens vazias não contam nem
-      // bloqueiam (elas ficam com created maior e antes mascaravam a pergunta
-      // nova — caso 20:07:46/20:07:54 do contato 5511995464029).
-      try {
-        const respondedAtMs = sourceLastAtMs
-        // Declarada ANTES do loop (usada na comparação abaixo).
-        const nowProcessed = readJsonArray(latestContact, 'ai_processed_ids')
-        const inHistory = $app.findRecordsByFilter(
-          'whatsapp_messages',
-          `contact_id='${contactId}' && direction='in'`,
-          '-created',
-          20,
-          0,
+      if (!staleDiscarded) {
+        // Releitura do contato: outras rodadas podem ter gravado ids enquanto esta
+        // esperava a OpenAI. Só mexe nos ids DESTA rodada.
+        latestContact = $app.findRecordById('whatsapp_contacts', contact.id)
+        const doneIds = readJsonArray(latestContact, 'ai_processed_ids')
+        for (let i = 0; i < sourceIds.length; i++) {
+          if (doneIds.indexOf(sourceIds[i]) === -1) doneIds.push(sourceIds[i])
+        }
+        writeJsonArray(latestContact, 'ai_processed_ids', doneIds)
+        const stillPending = readJsonArray(latestContact, 'ai_pending_ids').filter(
+          (id) => sourceIds.indexOf(id) === -1,
         )
-        for (let ni = 0; ni < inHistory.length; ni++) {
-          const m = inHistory[ni]
-          if (!m.getString('body')) continue // vazia não conta
-          const mid = m.getString('message_id') || m.id
-          if (sourceIds.indexOf(mid) !== -1) continue // é a própria fonte desta rodada
+        writeJsonArray(latestContact, 'ai_pending_ids', stillPending)
+        $app.saveNoValidate(latestContact)
+      }
+
+      if (staleDiscarded) {
+        // A resposta desta rodada foi descartada como obsoleta: anota o id da
+        // entrada mais recente NÃO respondida (é o gatilho da próxima rodada).
+        lastDiscardedNewestId = newestUnansweredId()
+      }
+
+      if (reply) {
+        // Observabilidade: desfecho 'enviada' — status/reason/sessão/turno vão na
+        // MESMA mensagem ai_response que o cliente recebe (sem registro extra).
+        const okMeta = {}
+        for (const k in roundMeta) okMeta[k] = roundMeta[k]
+        okMeta.status = 'enviada'
+        okMeta.reason = ''
+        sendWhatsappText(
+          instanceName,
+          latestContact.getString('remote_jid'),
+          reply,
+          'ai_response',
+          latestContact,
+          okMeta,
+        )
+      } else if (staleDiscarded) {
+        // Resposta descartada como obsoleta: NADA é enviado ao cliente — apenas
+        // o registro de desfecho da rodada (v0.0.88, observabilidade).
+        const staleMeta = {}
+        for (const k in roundMeta) staleMeta[k] = roundMeta[k]
+        staleMeta.status = 'descartada'
+        staleMeta.reason = 'resposta obsoleta: existe entrada mais recente sem resposta'
+        saveAiLogRecord(latestContact, instance, staleMeta)
+        $app
+          .logger()
+          .info(
+            'AI reply discarded as stale — pending stays for the newest round',
+            'contact',
+            contactId,
+          )
+      } else {
+        // Falha da IA NÃO é enviada ao cliente. Só registra e loga.
+        const failMeta = {}
+        for (const k in roundMeta) failMeta[k] = roundMeta[k]
+        failMeta.status = 'falhou'
+        failMeta.reason =
+          failReason || 'resposta vazia, obsoleta ou falha na chamada à OpenAI Agents API'
+        saveAiErrorRecord(latestContact, instance, failMeta.reason, failMeta)
+        $app.logger().error('AI reply not sent', 'contact', contactId, 'reason', failReason)
+      }
+    } catch (err) {
+      saveAiErrorRecord(latestContact, instance, String(err), {
+        status: 'falhou',
+        reason: String(err),
+        sessionId: typeof sessionId === 'string' ? sessionId : '',
+        turnId: '',
+        sourceIds: sourceIds,
+        triggerBody: combinedBody,
+      })
+      $app.logger().error('AI response failed', 'error', String(err))
+      break
+    } finally {
+      // v0.0.91: a pendência que chegou DURANTE esta rodada nunca fica sem
+      // resposta — ao fim de cada rodada o loop relê o contato e roda outra
+      // rodada se ainda há entrada com texto não respondida.
+      if (staleDiscarded) {
+        lastDiscardedNewestId = newestUnansweredId()
+      }
+    }
+
+    // ===== Fim da rodada: a pendência que chegou DURANTE esta rodada =====
+    // Reavalia a fila do contato. Se ainda há entrada com texto não respondida
+    // (ou seja, a resposta desta rodada foi descartada como obsoleta, ou uma
+    // mensagem nova chegou enquanto esperávamos a OpenAI), o loop roda outra
+    // rodada com a mensagem mais recente como gatilho. Caso contrário, encerra.
+    try {
+      latestContact = $app.findRecordById('whatsapp_contacts', contact.id)
+      const stillPending = readJsonArray(latestContact, 'ai_pending_ids')
+      const doneIds2 = readJsonArray(latestContact, 'ai_processed_ids')
+      let remaining = 0
+      let newestPendingId = ''
+      let newestPendingAt = 0
+      const recent = $app.findRecordsByFilter(
+        'whatsapp_messages',
+        `contact_id='${contactId}' && direction='in'`,
+        '-created',
+        20,
+        0,
+      )
+      for (let ri = 0; ri < recent.length; ri++) {
+        const m = recent[ri]
+        if (!m.getString('body')) continue // vazia não entra na fila
+        const mid = m.getString('message_id') || m.id
+        if (doneIds2.indexOf(mid) !== -1) continue // já respondida
+        remaining++
+        if (newestPendingAt === 0) {
+          newestPendingId = mid
           const mAt = m.getString('sent_at')
             ? parseTs(m.getString('sent_at'))
             : parseTs(m.get('created'))
-          if (mAt <= 0 || respondedAtMs <= 0) continue
-          if (mAt > respondedAtMs && nowProcessed.indexOf(mid) === -1) {
-            $app
-              .logger()
-              .info(
-                'AI stale reply discarded — newer text input exists',
-                'contact',
-                contactId,
-                'newer',
-                mid,
-                'responding_to_at',
-                new Date(respondedAtMs).toISOString(),
-                'sources',
-                sourceIds.join(','),
-              )
-            reply = ''
-            break
-          }
+          newestPendingAt = mAt
         }
-      } catch (err) {
-        // Fail-closed: sem conseguir conferir obsolescência, descarta por segurança.
-        reply = ''
+      }
+      if (remaining === 0) {
+        // Fila vazia: limpa as pendentes do contato e encerra.
+        writeJsonArray(latestContact, 'ai_pending_ids', [])
+        $app.saveNoValidate(latestContact)
         $app
           .logger()
-          .error('AI stale check failed — discarding reply (fail-closed)', 'error', String(err))
+          .info('AI round loop: queue drained', 'contact', contactId, 'rounds', roundIndex)
+        break
       }
-    }
-
-    // Quando a resposta foi DESCARTADA como obsoleta, NÃO marca as fontes como
-    // processadas e NÃO limpa as pendentes: a mensagem de texto mais recente
-    // ("Vcs tem casa ?") precisa ser respondida pela rodada mais recente —
-    // sem isso ela ficava órfã (respondida só pelo 'Obrigado' descartado).
-    // Nas falhas reais da IA (hardFail/timeout), marca como processadas para
-    // não reprocessar infinitamente a mesma entrada.
-    if (!reply && !failReason) staleDiscarded = true
-
-    if (!staleDiscarded) {
-      // Releitura do contato: outras rodadas podem ter gravado ids enquanto esta
-      // esperava a OpenAI. Só mexe nos ids DESTA rodada.
-      latestContact = $app.findRecordById('whatsapp_contacts', contact.id)
-      const doneIds = readJsonArray(latestContact, 'ai_processed_ids')
-      for (let i = 0; i < sourceIds.length; i++) {
-        if (doneIds.indexOf(sourceIds[i]) === -1) doneIds.push(sourceIds[i])
+      if (staleDiscarded && newestPendingId === lastDiscardedNewestId) {
+        // A mais recente ainda é a mesma que causou o descarte: espera o
+        // debounce do PRÓPRIO texto (mensagens em rajada chegam em ~2s) antes
+        // de rodar de novo, para a próxima rodada já incluir tudo.
+        $app
+          .logger()
+          .info(
+            'AI round loop: stale round — waiting for debounce before requeueing',
+            'contact',
+            contactId,
+            'round',
+            roundIndex,
+          )
+        waitMs(DEBOUNCE_MS)
+        continue
       }
-      writeJsonArray(latestContact, 'ai_processed_ids', doneIds)
-      const stillPending = readJsonArray(latestContact, 'ai_pending_ids').filter(
-        (id) => sourceIds.indexOf(id) === -1,
-      )
-      writeJsonArray(latestContact, 'ai_pending_ids', stillPending)
-      $app.saveNoValidate(latestContact)
-    }
-
-    if (reply) {
-      // Observabilidade: desfecho 'enviada' — status/reason/sessão/turno vão na
-      // MESMA mensagem ai_response que o cliente recebe (sem registro extra).
-      const okMeta = {}
-      for (const k in roundMeta) okMeta[k] = roundMeta[k]
-      okMeta.status = 'enviada'
-      okMeta.reason = ''
-      sendWhatsappText(
-        instanceName,
-        latestContact.getString('remote_jid'),
-        reply,
-        'ai_response',
-        latestContact,
-        okMeta,
-      )
-    } else if (staleDiscarded) {
-      // Resposta descartada como obsoleta: NADA é enviado ao cliente — apenas
-      // o registro de desfecho da rodada (v0.0.88, observabilidade).
-      const staleMeta = {}
-      for (const k in roundMeta) staleMeta[k] = roundMeta[k]
-      staleMeta.status = 'descartada'
-      staleMeta.reason = 'resposta obsoleta: existe entrada mais recente sem resposta'
-      saveAiLogRecord(latestContact, instance, staleMeta)
+      if (!staleDiscarded && newestPendingId === '') {
+        // Rodada concluiu e não há pendência nova — nada a fazer.
+        break
+      }
       $app
         .logger()
         .info(
-          'AI reply discarded as stale — pending stays for the newest round',
+          'AI round loop: pending remains — running another round',
           'contact',
           contactId,
+          'round',
+          roundIndex,
+          'remaining',
+          remaining,
+          'newest_pending',
+          newestPendingId,
         )
-    } else {
-      // Falha da IA NÃO é enviada ao cliente. Só registra e loga.
-      const failMeta = {}
-      for (const k in roundMeta) failMeta[k] = roundMeta[k]
-      failMeta.status = 'falhou'
-      failMeta.reason =
-        failReason || 'resposta vazia, obsoleta ou falha na chamada à OpenAI Agents API'
-      saveAiErrorRecord(latestContact, instance, failMeta.reason, failMeta)
-      $app.logger().error('AI reply not sent', 'contact', contactId, 'reason', failReason)
+    } catch (err) {
+      $app.logger().error('AI round loop: requeue check failed', 'error', String(err))
+      break
     }
-  } catch (err) {
-    saveAiErrorRecord(latestContact, instance, String(err), {
-      status: 'falhou',
-      reason: String(err),
-      sessionId: typeof sessionId === 'string' ? sessionId : '',
-      turnId: '',
-      sourceIds: sourceIds,
-      triggerBody: combinedBody,
-    })
-    $app.logger().error('AI response failed', 'error', String(err))
   }
 
   e.next()
