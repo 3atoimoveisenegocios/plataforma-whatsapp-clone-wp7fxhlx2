@@ -17,11 +17,28 @@ import { useToast } from '@/hooks/use-toast'
 import { RefreshCw, QrCode, PowerOff, Smartphone, CheckCircle2 } from 'lucide-react'
 import { PageHeader } from '@/components/ui/page-header'
 
+// QR codes do WhatsApp expiram em ~20s-1min no WhatsApp Web; aqui tratamos como
+// obsoleto qualquer QR gravado há mais de 2 minutos para forçar QR novo.
+const QR_MAX_AGE_MS = 2 * 60 * 1000
+// Intervalo mínimo entre tentativas automáticas de QR (Evolution pode estar fora).
+const AUTO_QR_COOLDOWN_MS = 45 * 1000
+// Polling de status enquanto não conectado, para reavaliar QR obsoleto/fila.
+const STATUS_POLL_MS = 30 * 1000
+
+const getQrAgeMs = (inst: any) => {
+  if (!inst?.updated) return Infinity
+  const raw: string = inst.updated
+  const t = new Date(raw.includes('T') ? raw : raw.replace(' ', 'T')).getTime()
+  if (Number.isNaN(t)) return Infinity
+  return Date.now() - t
+}
+
 export default function ConnectionSetup() {
   const [instance, setInstance] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState(false)
-  const autoQrTriggered = useRef(false)
+  const autoQrFingerprint = useRef('')
+  const lastAutoQrAttemptAt = useRef(0)
   const { user } = useAuth()
   const { toast } = useToast()
 
@@ -79,18 +96,34 @@ export default function ConnectionSetup() {
     }
   }
 
+  // Auto-trigger de QR: pede QR novo quando não há QR gravado OU quando o
+  // gravado está velho (mais de ~2 min). Dispara no carregamento da tela e a
+  // cada mudança da instância (realtime/polling), com cooldown de 45s entre
+  // tentativas para não martelar a Evolution API se ela estiver fora.
   useEffect(() => {
-    if (
-      !loading &&
-      instance &&
-      instance.status !== 'connected' &&
-      !instance.qrcode &&
-      !autoQrTriggered.current
-    ) {
-      autoQrTriggered.current = true
-      handleConnect(true)
-    }
+    if (loading || !instance || instance.status === 'connected') return
+    const hasQr = !!instance.qrcode
+    const stale = hasQr && getQrAgeMs(instance) > QR_MAX_AGE_MS
+    // Só pede QR novo automaticamente quando não há QR ou o gravado está velho.
+    if (hasQr && !stale) return
+    const fingerprint = `${instance.id}:${instance.updated || ''}`
+    const changed = fingerprint !== autoQrFingerprint.current
+    const cooled = Date.now() - lastAutoQrAttemptAt.current > AUTO_QR_COOLDOWN_MS
+    if (!changed && !cooled) return
+    autoQrFingerprint.current = fingerprint
+    lastAutoQrAttemptAt.current = Date.now()
+    handleConnect(true)
   }, [loading, instance])
+
+  // Enquanto não conectado, reavalia periodicamente: QR velho é renovado mesmo
+  // sem interação, e 'connecting' preso por minutos volta a ter nova tentativa.
+  useEffect(() => {
+    if (!instance || instance.status === 'connected') return
+    const id = setInterval(() => {
+      loadInstance()
+    }, STATUS_POLL_MS)
+    return () => clearInterval(id)
+  }, [instance?.id, instance?.status])
 
   const handleDisconnect = async () => {
     setActionLoading(true)
@@ -290,7 +323,9 @@ export default function ConnectionSetup() {
                         <p className="text-sm text-slate-500 max-w-[260px] mx-auto leading-relaxed">
                           {instance.status === 'connecting'
                             ? 'Aguardando sincronização com o WhatsApp...'
-                            : 'Gere um novo QR code e escaneie com seu celular.'}
+                            : instance.qrcode && getQrAgeMs(instance) > QR_MAX_AGE_MS
+                              ? 'Este QR Code expirou. Gere um novo para conectar.'
+                              : 'Gere um novo QR code e escaneie com seu celular.'}
                         </p>
                       </div>
                     </div>
@@ -329,15 +364,15 @@ export default function ConnectionSetup() {
                   {instance.status !== 'connected' && (
                     <Button
                       onClick={() => handleConnect()}
-                      disabled={actionLoading || instance.status === 'connecting'}
+                      disabled={actionLoading}
                       className="w-full sm:w-auto bg-violet-600 hover:bg-violet-700 text-white shadow-sm font-medium px-5 text-sm h-9"
                     >
-                      {actionLoading || instance.status === 'connecting' ? (
+                      {actionLoading ? (
                         <RefreshCw className="h-3.5 w-3.5 mr-2 animate-spin" />
                       ) : (
                         <QrCode className="h-3.5 w-3.5 mr-2" />
                       )}
-                      {instance.status === 'connecting' ? 'Conectando...' : 'Gerar QR Code'}
+                      {actionLoading ? 'Gerando...' : 'Gerar QR Code'}
                     </Button>
                   )}
                 </div>

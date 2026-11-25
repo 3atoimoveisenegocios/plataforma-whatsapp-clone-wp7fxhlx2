@@ -16,6 +16,9 @@ routerAdd('POST', '/backend/v1/webhook/evolution', (e) => {
         $app.saveNoValidate(instance)
       } else if (state === 'close' || state === 'refused') {
         instance.set('status', 'disconnected')
+        // QR velho nunca pode sobreviver a uma desconexão: limpa para o
+        // frontend pedir um QR novo na próxima tentativa de conexão.
+        instance.set('qrcode', '')
         $app.saveNoValidate(instance)
       }
       return e.json(200, { ok: true })

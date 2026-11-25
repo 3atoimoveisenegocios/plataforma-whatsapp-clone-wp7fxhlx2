@@ -38,13 +38,28 @@ routerAdd(
         if (res.json.base64) {
           instance.set('qrcode', res.json.base64)
           instance.set('status', 'connecting')
+          $app.saveNoValidate(instance)
         } else if (res.json.instance?.state === 'open') {
           instance.set('status', 'connected')
+          $app.saveNoValidate(instance)
+        } else {
+          // Sem QR na resposta: não deixa QR antigo preso na tela — limpa e
+          // marca desconectado para o frontend conseguir pedir de novo.
+          instance.set('qrcode', '')
+          instance.set('status', 'disconnected')
+          $app.saveNoValidate(instance)
         }
+      } else {
+        // Evolution respondeu erro: solta qualquer 'connecting' preso com QR velho.
+        instance.set('qrcode', '')
+        instance.set('status', 'disconnected')
         $app.saveNoValidate(instance)
       }
     } catch (err) {
       $app.logger().error('Evolution QR Error', 'error', String(err))
+      instance.set('qrcode', '')
+      instance.set('status', 'disconnected')
+      $app.saveNoValidate(instance)
     }
 
     return e.json(200, {
